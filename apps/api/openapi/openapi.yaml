@@ -1,0 +1,64 @@
+openapi: 3.1.0
+info:
+  title: Turf & Taste API
+  version: 0.0.0
+  description: Phase 0 contract. Business routes are intentionally absent.
+servers:
+  - url: http://localhost:4000
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Service health
+      responses:
+        '200':
+          description: The API process is serving requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [status, service, timestamp]
+          properties:
+            status:
+              const: ok
+            service:
+              const: turf-and-taste-api
+            timestamp:
+              type: string
+              format: date-time
+        error:
+          type: 'null'
+        meta:
+          type: object
+          required: [requestId]
+          properties:
+            requestId:
+              type: string
+    ErrorResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: 'null'
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        meta:
+          type: object
+          required: [requestId]
+          properties:
+            requestId:
+              type: string
