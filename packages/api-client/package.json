@@ -1,0 +1,22 @@
+{
+  "name": "@turf-and-taste/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@turf-and-taste/schemas": "workspace:*",
+    "@turf-and-taste/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "catalog:",
+    "vitest": "^5.0.3"
+  }
+}

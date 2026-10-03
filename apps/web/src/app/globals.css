@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+@import '@turf-and-taste/design-tokens/themes.css';
+
+@source '../../../../packages/ui-web/src';
+
+@theme inline {
+  --font-sans: var(--font-plus-jakarta), 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--tt-background);
+  --color-surface: var(--tt-surface);
+  --color-surface-muted: var(--tt-surface-muted);
+  --color-primary: var(--tt-primary);
+  --color-primary-foreground: var(--tt-primary-foreground);
+  --color-accent: var(--tt-accent);
+  --color-accent-muted: var(--tt-accent-muted);
+  --color-text-primary: var(--tt-text-primary);
+  --color-text-secondary: var(--tt-text-secondary);
+  --color-border: var(--tt-border);
+  --color-success: var(--tt-success);
+  --color-warning: var(--tt-warning);
+  --color-danger: var(--tt-danger);
+  --color-info: var(--tt-info);
+  --color-disabled: var(--tt-disabled);
+  --color-focus-ring: var(--tt-focus-ring);
+  --color-overlay: var(--tt-overlay);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --text-display: 40px;
+  --text-display--line-height: 48px;
+  --text-h1: 32px;
+  --text-h1--line-height: 40px;
+  --text-h2: 24px;
+  --text-h2--line-height: 32px;
+  --text-h3: 20px;
+  --text-h3--line-height: 28px;
+  --text-title: 18px;
+  --text-title--line-height: 26px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-body-small: 14px;
+  --text-body-small--line-height: 20px;
+  --text-label: 14px;
+  --text-label--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --shadow-sm: 0 1px 2px rgb(28 25 21 / 0.08);
+  --shadow-md: 0 8px 24px rgb(28 25 21 / 0.12);
+  --shadow-lg: 0 16px 40px rgb(28 25 21 / 0.16);
+}
+
+body {
+  font-family: var(--font-sans);
+}
