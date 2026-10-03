@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Turf & Taste",
+    "slug": "turf-and-taste",
+    "scheme": "turfandtaste",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F3EB"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "in.turfandtaste.app"
+    },
+    "android": {
+      "package": "in.turfandtaste.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B4332"
+      }
+    },
+    "plugins": ["expo-dev-client", "expo-font", "expo-secure-store"]
+  }
+}
