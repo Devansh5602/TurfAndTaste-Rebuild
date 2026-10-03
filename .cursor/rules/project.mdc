@@ -1,0 +1,6 @@
+---
+description: Turf & Taste rebuild agent entrypoint
+alwaysApply: true
+---
+
+Read `AGENTS.md` before changing this repository. It points to the product, architecture, UI, and handoff documents. Do not invent a second instruction set here.
