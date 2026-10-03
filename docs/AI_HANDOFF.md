@@ -15,8 +15,10 @@
 - `5bff85c` chore(api): bootstrap express service architecture
 - `413e890` chore(web): bootstrap nextjs application
 - `1ec1c07` chore(mobile): bootstrap react native application
+- `655f8a1` docs(architecture): add engineering and agent documentation
+- `54a0399` ci: add foundation verification workflow
 
-Documentation and CI commits follow these. Read `git log --oneline origin/develop..HEAD` for the full list.
+Read `git log --oneline origin/develop..HEAD` if this list is behind the branch tip.
 
 ## Completed
 
