@@ -1,0 +1,14 @@
+{
+  "extends": "../config/tsconfig/react.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "customConditions": ["react-native"]
+  },
+  "include": ["src", "nativewind-env.d.ts"]
+}
