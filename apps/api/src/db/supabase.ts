@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type SupabaseClientOptions, type RealtimeClientOptions } from '@supabase/supabase-js';
 import type { ApiEnv } from '../config/env';
 
 export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
@@ -6,7 +6,31 @@ export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
     throw new Error('Supabase server credentials are not configured.');
   }
 
-  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  const options: SupabaseClientOptions<'public'> = {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  };
+
+  if (env.NODE_ENV === 'test') {
+    options.realtime = false as false | RealtimeClientOptions;
+  }
+
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, options);
+}
+
+export function createSupabaseClient(env: ApiEnv, accessToken: string): SupabaseClient {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL is not configured.');
+  }
+
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY ?? '', {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
     auth: {
       persistSession: false,
       autoRefreshToken: false,
