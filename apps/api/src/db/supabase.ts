@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient, type SupabaseClientOptions, type RealtimeClientOptions } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 import type { ApiEnv } from '../config/env';
 
 export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
@@ -14,7 +14,8 @@ export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
   };
 
   if (env.NODE_ENV === 'test') {
-    options.realtime = false as false | RealtimeClientOptions;
+    // Disable realtime in test environment to avoid WebSocket dependency
+    (options as SupabaseClientOptions<'public'> & { realtime?: false }).realtime = false;
   }
 
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, options);
