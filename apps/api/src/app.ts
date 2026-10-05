@@ -9,7 +9,8 @@ import { errorHandler } from './middleware/error-handler';
 import { notFound } from './middleware/not-found';
 import { requestId } from './middleware/request-id';
 import { healthRouter } from './routes/health';
-import { v1Router } from './routes/v1';
+import { createV1Router } from './routes/v1';
+import { createSupabaseAdmin } from './db/supabase';
 
 export function createApp(env: ApiEnv): Express {
   const app = express();
@@ -46,8 +47,11 @@ export function createApp(env: ApiEnv): Express {
     );
   }
 
+  // Create Supabase admin client for server-side operations
+  const supabaseAdmin = createSupabaseAdmin(env);
+
   app.use('/health', healthRouter);
-  app.use('/api/v1', v1Router);
+  app.use('/api/v1', createV1Router(env, supabaseAdmin));
   app.use(notFound);
   app.use(errorHandler);
   return app;

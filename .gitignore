@@ -20,7 +20,18 @@ Thumbs.db
 **/.env.*
 !**/.env.example
 
+# dotenvx - allow encrypted env files, ignore private keys
+apps/api/.env.keys
+apps/web/.env.keys
+apps/mobile/.env.keys
+!apps/api/.env
+!apps/web/.env.local
+!apps/mobile/.env
+
 .cursor/mcp.json
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Supabase CLI local artifacts
+supabase/.temp/

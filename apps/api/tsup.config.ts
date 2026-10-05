@@ -7,4 +7,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   noExternal: [/^@turf-and-taste\//],
+  external: ['ws'],
 });

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev": "dotenvx run --env-file=.env -- tsx watch src/server.ts",
     "build": "tsup",
-    "start": "node --env-file-if-exists=.env dist/server.js",
+    "start": "dotenvx run --env-file=.env -- node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "dotenvx run --env-file=.env -- vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -20,17 +20,22 @@
     "helmet": "^8.1.0",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
+    "razorpay": "^2.9.6",
+    "uuid": "^11.1.0",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.19.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/node": "^22.19.0",
     "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.2",
     "supertest": "^7.1.4",
     "tsup": "^8.5.0",
     "tsx": "^4.20.5",
     "typescript": "catalog:",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "ws": "^8.22.0"
   }
 }
