@@ -32,3 +32,6 @@ apps/mobile/.env.keys
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Supabase CLI local artifacts
+supabase/.temp/

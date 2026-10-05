@@ -191,7 +191,7 @@ create table public.reviews (
 
 create table public.events (
   id uuid primary key default gen_random_uuid(),
-  title text not null,
+  title text not null unique,
   body text,
   starts_at timestamptz,
   published boolean not null default false,
@@ -201,7 +201,7 @@ create table public.events (
 
 create table public.notices (
   id uuid primary key default gen_random_uuid(),
-  title text not null,
+  title text not null unique,
   body text not null,
   published boolean not null default false,
   created_at timestamptz not null default now(),
@@ -214,7 +214,7 @@ create table public.notices (
 
 create table public.dining_outlets (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  name text not null unique,
   description text,
   active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -225,7 +225,8 @@ create table public.dining_categories (
   id uuid primary key default gen_random_uuid(),
   outlet_id uuid not null references public.dining_outlets (id) on delete cascade,
   name text not null,
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  unique (outlet_id, name)
 );
 
 create table public.menu_items (
@@ -237,7 +238,8 @@ create table public.menu_items (
   available boolean not null default true,
   image_path text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (category_id, name)
 );
 
 -- ============================================================

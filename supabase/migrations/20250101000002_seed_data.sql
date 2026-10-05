@@ -220,83 +220,83 @@ on conflict do nothing;
 insert into public.dining_outlets (name, description, active) values
   ('Turf Café', 'Light bites and beverages near the turfs', true),
   ('The Pavilion', 'Sit-down dining with Indian and continental menu', true)
-on conflict do nothing;
+on conflict (name) do nothing;
 
 insert into public.dining_categories (outlet_id, name, sort_order)
-select do.id, 'Beverages', 1
-from public.dining_outlets do where do.name = 'Turf Café'
-on conflict do nothing;
+select dout.id, 'Beverages', 1
+from public.dining_outlets dout where dout.name = 'Turf Café'
+on conflict (outlet_id, name) do nothing;
 
 insert into public.dining_categories (outlet_id, name, sort_order)
-select do.id, 'Snacks', 2
-from public.dining_outlets do where do.name = 'Turf Café'
-on conflict do nothing;
+select dout.id, 'Snacks', 2
+from public.dining_outlets dout where dout.name = 'Turf Café'
+on conflict (outlet_id, name) do nothing;
 
 insert into public.dining_categories (outlet_id, name, sort_order)
-select do.id, 'Starters', 1
-from public.dining_outlets do where do.name = 'The Pavilion'
-on conflict do nothing;
+select dout.id, 'Starters', 1
+from public.dining_outlets dout where dout.name = 'The Pavilion'
+on conflict (outlet_id, name) do nothing;
 
 insert into public.dining_categories (outlet_id, name, sort_order)
-select do.id, 'Main Course', 2
-from public.dining_outlets do where do.name = 'The Pavilion'
-on conflict do nothing;
+select dout.id, 'Main Course', 2
+from public.dining_outlets dout where dout.name = 'The Pavilion'
+on conflict (outlet_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Masala Chai', 'Traditional Indian spiced tea', 3000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'Turf Café' and dc.name = 'Beverages'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'Turf Café' and dc.name = 'Beverages'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Cold Coffee', 'Chilled coffee with ice cream', 8000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'Turf Café' and dc.name = 'Beverages'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'Turf Café' and dc.name = 'Beverages'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Veg Sandwich', 'Grilled vegetable sandwich with chutney', 12000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'Turf Café' and dc.name = 'Snacks'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'Turf Café' and dc.name = 'Snacks'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'French Fries', 'Crispy golden fries with peri-peri seasoning', 9000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'Turf Café' and dc.name = 'Snacks'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'Turf Café' and dc.name = 'Snacks'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Paneer Tikka', 'Marinated cottage cheese grilled to perfection', 18000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'The Pavilion' and dc.name = 'Starters'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'The Pavilion' and dc.name = 'Starters'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Chicken Tikka', 'Boneless chicken marinated in yogurt and spices', 22000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'The Pavilion' and dc.name = 'Starters'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'The Pavilion' and dc.name = 'Starters'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Veg Biryani', 'Fragrant basmati rice with mixed vegetables', 16000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'The Pavilion' and dc.name = 'Main Course'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'The Pavilion' and dc.name = 'Main Course'
+on conflict (category_id, name) do nothing;
 
 insert into public.menu_items (category_id, name, description, price_paise, available)
 select dc.id, 'Butter Chicken', 'Classic North Indian curry with naan', 24000, true
 from public.dining_categories dc
-join public.dining_outlets do on do.id = dc.outlet_id
-where do.name = 'The Pavilion' and dc.name = 'Main Course'
-on conflict do nothing;
+join public.dining_outlets dout on dout.id = dc.outlet_id
+where dout.name = 'The Pavilion' and dc.name = 'Main Course'
+on conflict (category_id, name) do nothing;
 
 -- ============================================================
 -- EVENTS & NOTICES (Sample for development)
@@ -305,9 +305,9 @@ on conflict do nothing;
 insert into public.events (title, body, starts_at, published) values
   ('Summer Cricket Camp', 'Join our 4-week intensive cricket coaching camp for ages 8-16. Professional coaches, certified curriculum.', '2025-04-01 08:00:00+05:30', true),
   ('Skating Workshop', 'Beginner-friendly skating workshop every Saturday. Equipment provided.', '2025-04-05 10:00:00+05:30', true)
-on conflict do nothing;
+on conflict (title) do nothing;
 
 insert into public.notices (title, body, published) values
   ('Monsoon Schedule Update', 'During monsoon season (June-Sept), outdoor facilities may have modified hours. Check the app for real-time updates.', true),
   ('New Pickle Ball Courts', 'We have added two new pickle ball courts! Bookings open from next week.', true)
-on conflict do nothing;
+on conflict (title) do nothing;
