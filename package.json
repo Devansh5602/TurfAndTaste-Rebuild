@@ -13,9 +13,13 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "env:api": "dotenvx run --env-file=apps/api/.env --",
+    "env:web": "dotenvx run --env-file=apps/web/.env.local --",
+    "env:mobile": "dotenvx run --env-file=apps/mobile/.env --"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^2.32.4",
     "@eslint/js": "^9.39.1",
     "eslint": "^9.39.1",
     "prettier": "^3.9.9",

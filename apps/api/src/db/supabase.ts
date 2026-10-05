@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 import type { ApiEnv } from '../config/env';
+import WebSocket from 'ws';
 
 export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -11,12 +12,15 @@ export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {
       persistSession: false,
       autoRefreshToken: false,
     },
+    // Disable realtime as it's not used in current implementation and requires Node.js 22+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    realtime: false as any,
+    // Provide WebSocket polyfill for Node.js 20
+    global: {
+      WebSocket: WebSocket as unknown as typeof globalThis.WebSocket,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any,
   };
-
-  if (env.NODE_ENV === 'test') {
-    // Disable realtime in test environment to avoid WebSocket dependency
-    (options as SupabaseClientOptions<'public'> & { realtime?: false }).realtime = false;
-  }
 
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, options);
 }
