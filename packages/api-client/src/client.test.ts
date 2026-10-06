@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClientError, getHealth } from './client';
+import { ApiClientError, authenticatedRequest, getHealth } from './client';
 
 describe('getHealth', () => {
   it('parses a successful health envelope', async () => {
@@ -36,6 +36,47 @@ describe('getHealth', () => {
     );
 
     await expect(getHealth('http://localhost:4000')).rejects.toBeInstanceOf(ApiClientError);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('authenticatedRequest', () => {
+  it('returns data from a successful API envelope', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ data: [{ id: 'facility-1' }], error: null, meta: { requestId: 'req-2' } }),
+      ),
+    );
+
+    await expect(
+      authenticatedRequest<{ id: string }[]>(
+        'http://localhost:4000',
+        '/api/v1/facilities',
+        'token',
+      ),
+    ).resolves.toEqual([{ id: 'facility-1' }]);
+    vi.unstubAllGlobals();
+  });
+
+  it('throws the API envelope error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          {
+            data: null,
+            error: { code: 'UNAUTHORIZED', message: 'Sign in required.' },
+            meta: { requestId: 'req-3' },
+          },
+          { status: 401 },
+        ),
+      ),
+    );
+
+    await expect(
+      authenticatedRequest('http://localhost:4000', '/api/v1/facilities', 'token'),
+    ).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED', message: 'Sign in required.' });
     vi.unstubAllGlobals();
   });
 });

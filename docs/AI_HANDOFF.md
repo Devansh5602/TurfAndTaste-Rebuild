@@ -1,131 +1,126 @@
 # AI handoff
 
-## Current state
+## Current checkpoint
 
-- Branch: `feature/core-platform-foundation`
-- Phase: 1.1, hosted database setup + device handoff checkpoint complete
-- Base: `develop` (commit `88c04d4` at branch creation)
-- Do not merge to `main` unless explicitly asked
+- Branch: `feature/customer-mobile-auth-discovery`
+- Base: `develop` at `2566034`
+- Phase: customer mobile authentication and database-backed facility discovery checkpoint
+- Runtime: Node.js 22 is required (`.node-version` is `22`; `package.json` requires `>=22.13.0`)
+- Do not merge to `main`; open a PR to `develop`
+- Do not begin booking or payment work without following `docs/DEVELOPMENT_PLAN.md`
 
-## Commits on this branch
+## Completed at this checkpoint
 
-- `7f33294` chore(repo): establish monorepo and tooling
-- `d4fe982` feat(theme): establish canonical design token system
-- `a97ef31` feat(ui): establish shared ui foundations
-- `5bff85c` chore(api): bootstrap express service architecture
-- `413e890` chore(web): bootstrap nextjs application
-- `1ec1c07` chore(mobile): bootstrap react native application
-- `655f8a1` docs(architecture): add engineering and agent documentation
-- `54a0399` ci: add foundation verification workflow
-- `6a3b20d` feat(phase1): implement core platform foundation
-- `68025fe` fix(api): disable realtime in test environment without type error
-- `21229fd` chore(env): add secure multi-device dotenvx workflow
-- `HEAD` chore(checkpoint): complete hosted database setup and device handoff
+### Customer mobile shell
 
-Read `git log --oneline origin/develop..HEAD` if this list is behind the branch tip.
+- React Navigation separates signed-out and signed-in customer flows.
+- The root app keeps the global query client and global persisted theme provider.
+- Clubhouse Ivory and Midnight Ivory continue to use shared semantic design tokens.
+- Loading state is shown while the customer session is restored.
 
-## Completed
+### Real Supabase customer authentication
 
-### Phase 0 - Foundation
-- pnpm workspace, Turborepo, Node 22 pin, strict TypeScript, ESLint, Prettier
-- Design tokens for Clubhouse Ivory and Midnight Ivory
-- Web theme persistence through `next-themes` and storage key `turf-and-taste-theme`
-- Mobile theme persistence through AsyncStorage and the same key
-- Web and native UI primitive foundations
-- Express health route and error envelope
-- Expo SDK 57 dev client shell, not Expo Go
-- Supabase folder layout and an unapplied domain draft
-- Product, architecture, security, package, test, and phase docs
+- Mobile uses the configured public Supabase URL and anon key; no customer identity is hardcoded.
+- Sign-up submits email, password, and full name to Supabase Auth.
+- Sign-in uses Supabase password authentication.
+- Sign-out clears the Supabase session and returns to the signed-out flow.
+- Password-reset email requests use the `turfandtaste://reset-password` redirect.
+- Auth sessions use `expo-secure-store`; theme preference remains in AsyncStorage.
+- Auth state is restored at startup and follows Supabase auth state changes and token refreshes.
+- React Hook Form fields use `Controller` so React Native `onChangeText` values reach validation and submission.
 
-### Phase 1 - Core Platform Foundation
-- **Database schema**: 22 tables covering profiles, staff/RBAC, facilities/add-ons, schedules/overrides, pricing, bookings/items, payments/orders, reviews, events/notices, dining, inquiries, audit logs
-- **RLS policies**: 56 policies enforcing customer/staff domain separation
-- **Seed data**: Deterministic development seed for single Patan property with 4 authorized facilities + Shooting Machine add-on
-- **API services**: Facilities, Schedules, Pricing, Availability, Booking (Quote + CRUD), Payment (Razorpay TEST), Profile
-- **API routes**: `/api/v1/facilities`, `/api/v1/bookings`, `/api/v1/payments`, `/api/v1/profile`
-- **Auth middleware**: JWT verification, customer/staff domain separation, permission-based RBAC
-- **Supabase integration**: Server-side admin client, user-scoped client for auth
-- **Razorpay TEST**: Order creation, signature verification, webhook handling
+### Facility discovery
 
-### Phase 1.1 - Hosted Database Setup + Device Handoff
-- **Supabase project linked**: `TurfAndTaste-Rebuild` (ref: `rlmuxztkwpwutyepttfe`)
-- **Migrations applied**: 3 migrations deployed to hosted database
-  - `20250101000000_initial_schema.sql` - Core schema with 22 tables
-  - `20250101000001_rls_policies.sql` - 56 RLS policies
-  - `20250101000002_seed_data.sql` - Development seed data
-- **Credentials rotated**: New Supabase and Razorpay TEST credentials in encrypted env
-- **dotenvx workflow**: Encrypted env files committed, private keys local-only
+- Home and Facilities screens request active facilities from the real API with the current customer access token.
+- Loading, recoverable error, empty, populated, and pull-to-refresh states are present.
+- Facility detail navigation uses the stable `FacilityKey`, not a database id cast.
+- Facility detail reads the real facility, allowed add-ons, weekly schedule, and server pricing.
+- Shooting Machine is represented only as an add-on returned for Cricket Green Net Practice.
+- No fixture data is presented as production data and no unauthorized sport was added.
+- No booking creation, quote, payment, cart, checkout, or client-side price-authority flow was introduced.
 
-## Architecture
+### API client and UI support
 
-See `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
+- The authenticated API helper adds the bearer token and unwraps the repository API envelope.
+- Facility discovery client methods cover list, detail, schedule, and pricing only.
+- API envelope success and failure behavior has focused tests.
+- Native primitives gained the variants, validation text, and layout hooks required by these screens while continuing to use design tokens.
 
-Web is Next.js 16 on Tailwind 4. Mobile is Expo SDK 57 with NativeWind 4. API is Express 5. Shared rules live in `@turf-and-taste/schemas`. Supabase is the system of record with migrations applied.
+### TypeScript repair
 
-## Package choices
+The mobile TypeScript failure was structural, not parser corruption:
 
-See `docs/PACKAGE_POLICY.md`. TypeScript is pinned to 5.9.3 because typescript-eslint does not accept TypeScript 7 yet.
+1. `apps/mobile/tsconfig.json` had lost `expo/tsconfig.base` and had been replaced with Node16/CommonJS and classic JSX settings.
+2. Temporary local declarations shadowed React Native and TanStack Query types.
+3. Mobile had been pinned to TanStack Query 4 while source used the workspace catalog's TanStack Query 5 API.
+4. Source then exposed ordinary route, API arity, strict-null, and unused-declaration errors.
 
-## Verification already run
+The Expo inheritance is restored, temporary declaration shims are gone, and mobile uses `@tanstack/react-query: catalog:`.
 
-- `pnpm lint` ✅
-- `pnpm typecheck` ✅ (8 packages)
-- `pnpm test` ✅ (20 tests)
-- `pnpm build` ✅ (API + Web)
-- Supabase connectivity ✅
-- Razorpay TEST connectivity ✅
-- Migration deployment ✅ (3/3 applied)
-- RLS enabled on all 22 tables ✅
-- 56 RLS policies active ✅
-- Seed data verified (4 facilities, 1 add-on, pricing, roles, dining, events) ✅
-- Product truth validated (only authorized sports) ✅
+## Verification
 
-## Hosted Supabase Status
+Checkpoint verification on Node 22:
 
-- **Project**: `TurfAndTaste-Rebuild` (ref: `rlmuxztkwpwutyepttfe`)
-- **Region**: Asia/Kolkata (implied by timezone)
-- **Migrations applied**: 3/3
-- **Tables created**: 22
-- **RLS enabled**: 22/22 tables
-- **Policies created**: 56
-- **Seed data**: Facilities (4), Add-ons (1), Pricing (10 tiers), Roles (4), Permissions (24), Dining (2 outlets, 8 items), Events (2), Notices (2)
-- **No unauthorized sports seeded**: ✅
+```text
+pnpm install   passed
+pnpm lint      passed
+pnpm typecheck passed
+pnpm test      passed
+pnpm build     passed
+```
 
-## Razorpay TEST Status
+Focused API-client coverage is now 4 tests. Repository tests cover 22 tests in total at this checkpoint. Native Android/iOS builds were not run.
 
-- **Mode**: Test only
-- **Key ID**: `rzp_test_TkEADTPfIIx77H` (rotated)
-- **Secret**: Rotated, server-only
-- **API connectivity**: Verified via payment service initialization
+## Security and repository hygiene
 
-## dotenvx Multi-Device Workflow
+- Tracked `.env` files contain dotenvx-encrypted values and public encryption metadata, not plaintext secrets.
+- `.env.keys` files remain local and gitignored.
+- No service-role key, payment secret, access token, password, or private dotenvx key is committed.
+- No generated native projects, `.expo` output, build output, diagnostic declaration shims, or backup files are part of the checkpoint.
+- Public mobile Supabase URL/anon configuration is used only for the client-side auth behavior Supabase expects.
 
-### Encrypted files (committed)
-- `apps/api/.env` - 8 server secrets
-- `apps/web/.env.local` - 3 public vars
-- `apps/mobile/.env` - 3 public vars
+## Known gaps
 
-### Private keys (gitignored, never committed)
-- `apps/api/.env.keys`
-- `apps/web/.env.keys`
-- `apps/mobile/.env.keys`
+- The app requests sign-up verification and password-recovery emails from the real Supabase project, but inbound email deep-link completion and a reset-password form still require device-level completion before the authentication phase can be considered end-to-end complete under `docs/DEVELOPMENT_PLAN.md`.
+- Auth and discovery screens do not yet have a mobile component/integration test harness; API-envelope behavior is unit tested and repository static gates pass.
+- Facility discovery requires the API and hosted Supabase data to be reachable from the physical device/emulator.
+- Native Android/iOS builds and physical-device interaction checks remain outstanding.
+- Profile editing and customer booking history are intentionally deferred; the account screen currently exposes identity and sign-out only.
 
-### Required on fresh device
-1. Clone repo
-2. `pnpm install`
-3. Securely transfer three `.env.keys` files from current machine
-4. Place each beside its encrypted env file
-5. Run `pnpm env:api echo "OK"` to verify decryption
+## Exact next starting point
 
-## Next task
+Before starting a later product phase, complete the remaining Phase 2 device checkpoint: configure and validate the `turfandtaste://` verification/recovery callback on a development build, add the reset-password completion screen, and verify session restoration after an app restart.
 
-Phase 2: Customer app navigation and authentication (mobile-first). The API can now identify customer/staff principals, RLS is enforced, and the database schema is ready for facilities discovery, booking, and payment flows.
+Then follow the repository's authoritative phase sequence in `docs/DEVELOPMENT_PLAN.md`. For Phase 3, validate on-device that the database-backed discovery flow renders exactly the four authorized facilities and exposes Shooting Machine only under Cricket Green Net Practice. Do not start the Phase 4 booking flow until that Phase 3 exit criterion is recorded as complete.
 
-## Read first
+## Multi-device recovery
 
-1. `docs/PRODUCT_TRUTH.md`
-2. `docs/ARCHITECTURE.md`
-3. `docs/UI_KIT.md`
-4. `docs/DECISIONS.md`
-5. `AGENTS.md`
-6. `docs/ENVIRONMENT_WORKFLOW.md` (new - multi-device dotenvx workflow)
+On a fresh machine:
+
+```bash
+git clone <repository-url>
+cd TurfAndTaste-Rebuild
+git switch feature/customer-mobile-auth-discovery
+
+# Use Node 22 (the repository requires >=22.13.0).
+nvm install 22
+nvm use 22
+corepack enable
+pnpm install
+
+# Securely transfer these local-only files from the trusted machine:
+# apps/api/.env.keys
+# apps/web/.env.keys
+# apps/mobile/.env.keys
+
+pnpm env:api echo "API environment available"
+pnpm env:web echo "Web environment available"
+pnpm env:mobile echo "Mobile environment available"
+
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Never paste key contents into source, documentation, logs, issues, chat, or commits. See `docs/ENVIRONMENT_WORKFLOW.md` for rotation and recovery details.
