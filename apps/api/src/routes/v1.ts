@@ -19,16 +19,28 @@ export function createV1Router(env: ApiEnv, supabase: SupabaseClient) {
   const facilitiesService = new FacilitiesService(supabase);
   const schedulesService = new SchedulesService(supabase);
   const pricingService = new PricingService(supabase);
-  const availabilityService = new AvailabilityService(schedulesService, pricingService);
+  const availabilityService = new AvailabilityService(supabase, schedulesService, pricingService);
   const paymentService = new PaymentService(supabase, env);
 
-  // Public routes (no auth required) - facilities, schedules, pricing
-  router.use('/facilities', createBookingRoutes(supabase, availabilityService, pricingService, facilitiesService, schedulesService));
+  router.use(
+    '/',
+    createBookingRoutes(
+      supabase,
+      availabilityService,
+      pricingService,
+      facilitiesService,
+      schedulesService,
+    ),
+  );
 
   // Protected customer routes
   router.use('/profile', requireAuth, requireDomain('customer'), createProfileRoutes(supabase));
-  router.use('/bookings', requireAuth, requireDomain('customer'), createBookingRoutes(supabase, availabilityService, pricingService, facilitiesService, schedulesService));
-  router.use('/payments', requireAuth, requireDomain('customer'), createPaymentRoutes(supabase, paymentService));
+  router.use(
+    '/payments',
+    requireAuth,
+    requireDomain('customer'),
+    createPaymentRoutes(supabase, paymentService),
+  );
 
   return router;
 }

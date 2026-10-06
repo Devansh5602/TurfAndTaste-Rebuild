@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { FacilityKey, BookingDurationHours } from '@turf-and-taste/types';
-import { allowsShootingMachine } from '@turf-and-taste/schemas';
+import type { BookingDurationHours, FacilityKey } from '@turf-and-taste/types';
+import {
+  allowsShootingMachine,
+  businessDateTime,
+  businessTime,
+  businessWeekday,
+} from '@turf-and-taste/schemas';
 import { HttpError } from '../errors/http-error';
 
 export interface Facility {
@@ -47,16 +52,24 @@ export interface PricingTier {
 }
 
 export interface SlotAvailability {
-  facility_id: string;
-  date: string; // YYYY-MM-DD in Asia/Kolkata
-  start_time: string; // HH:mm
-  duration_hours: BookingDurationHours;
+  facilityId: string;
+  date: string;
+  startTime: string;
+  durationHours: BookingDurationHours;
   available: boolean;
   reason?: string;
 }
 
+export interface AvailabilityListing {
+  serverNow: string;
+  businessTimeZone: 'Asia/Kolkata';
+  date: string;
+  durationHours: BookingDurationHours;
+  slots: Array<{ startTime: string; startsAt: string }>;
+}
+
 export class FacilitiesService {
-  constructor(private supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient) {}
 
   async listActive(): Promise<Facility[]> {
     const { data, error } = await this.supabase
@@ -64,9 +77,8 @@ export class FacilitiesService {
       .select('id, key, name, active')
       .eq('active', true)
       .order('name');
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch facilities.');
-    return data ?? [];
+    return (data ?? []) as Facility[];
   }
 
   async getByKey(key: FacilityKey): Promise<Facility | null> {
@@ -76,9 +88,8 @@ export class FacilitiesService {
       .eq('key', key)
       .eq('active', true)
       .maybeSingle();
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch facility.');
-    return data;
+    return data as Facility | null;
   }
 
   async getAddons(facilityId: string): Promise<FacilityAddon[]> {
@@ -88,47 +99,32 @@ export class FacilitiesService {
       .eq('facility_id', facilityId)
       .eq('active', true)
       .order('name');
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch add-ons.');
-    return data ?? [];
+    return (data ?? []) as FacilityAddon[];
   }
 
-  async validateFacilityAndAddon(facilityKey: FacilityKey, addonKey?: string): Promise<{ facility: Facility; addon?: FacilityAddon }> {
+  async validateFacilityAndAddon(
+    facilityKey: FacilityKey,
+    addonKey?: string,
+  ): Promise<{ facility: Facility; addon?: FacilityAddon }> {
     const facility = await this.getByKey(facilityKey);
-    if (!facility) {
-      throw new HttpError(400, 'INVALID_FACILITY', 'Facility not found or inactive.');
+    if (!facility) throw new HttpError(400, 'INVALID_FACILITY', 'Facility not found or inactive.');
+    if (!addonKey) return { facility };
+    if (addonKey !== 'shooting-machine' || !allowsShootingMachine(facilityKey)) {
+      throw new HttpError(
+        400,
+        'ADDON_NOT_ALLOWED',
+        'This add-on is not available for the selected facility.',
+      );
     }
-
-    if (addonKey) {
-      if (addonKey !== 'shooting-machine') {
-        throw new HttpError(400, 'INVALID_ADDON', 'Invalid add-on.');
-      }
-      if (!allowsShootingMachine(facilityKey)) {
-        throw new HttpError(400, 'ADDON_NOT_ALLOWED', 'This add-on is not available for the selected facility.');
-      }
-
-      const { data: addon, error } = await this.supabase
-        .from('facility_addons')
-        .select('id, facility_id, key, name, active')
-        .eq('facility_id', facility.id)
-        .eq('key', addonKey)
-        .eq('active', true)
-        .maybeSingle();
-
-      if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to validate add-on.');
-      if (!addon) {
-        throw new HttpError(400, 'ADDON_NOT_FOUND', 'Add-on not found or inactive.');
-      }
-
-      return { facility, addon };
-    }
-
-    return { facility };
+    const addon = (await this.getAddons(facility.id)).find((item) => item.key === addonKey);
+    if (!addon) throw new HttpError(400, 'ADDON_NOT_FOUND', 'Add-on not found or inactive.');
+    return { facility, addon };
   }
 }
 
 export class SchedulesService {
-  constructor(private supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient) {}
 
   async getWeeklySchedule(facilityId: string): Promise<Schedule[]> {
     const { data, error } = await this.supabase
@@ -136,90 +132,57 @@ export class SchedulesService {
       .select('id, facility_id, weekday, opens_at, closes_at')
       .eq('facility_id', facilityId)
       .order('weekday');
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch schedule.');
-    return data ?? [];
+    return (data ?? []) as Schedule[];
   }
 
-  async getOverrides(facilityId: string, from: Date, to: Date): Promise<ScheduleOverride[]> {
+  async getScheduleForDate(facilityId: string, date: string): Promise<Schedule | null> {
+    const midday = businessDateTime(date, '12:00');
     const { data, error } = await this.supabase
-      .from('schedule_overrides')
-      .select('id, facility_id, starts_at, ends_at, reason, closed')
+      .from('schedules')
+      .select('id, facility_id, weekday, opens_at, closes_at')
       .eq('facility_id', facilityId)
-      .lte('starts_at', to.toISOString())
-      .gte('ends_at', from.toISOString())
-      .order('starts_at');
-
-    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch schedule overrides.');
-    return data ?? [];
-  }
-
-  setSupabase(client: SupabaseClient) {
-    this.supabase = client;
+      .eq('weekday', businessWeekday(midday))
+      .maybeSingle();
+    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch schedule.');
+    return data as Schedule | null;
   }
 
   async isFacilityOpen(
     facilityId: string,
-    date: Date, // in Asia/Kolkata
-    startTime: string, // HH:mm
+    date: string,
+    startTime: string,
     durationHours: BookingDurationHours,
   ): Promise<{ open: boolean; reason?: string }> {
-    const weekday = date.getDay(); // 0 = Sunday
-    const startMinutes = this.timeToMinutes(startTime);
-    const endMinutes = startMinutes + durationHours * 60;
-
-    // Check overrides first
-    const { data: overrides } = await this.supabase
+    const slotStart = businessDateTime(date, startTime);
+    const slotEnd = new Date(slotStart.getTime() + durationHours * 3_600_000);
+    const { data: overrides, error: overrideError } = await this.supabase
       .from('schedule_overrides')
       .select('starts_at, ends_at, closed, reason')
       .eq('facility_id', facilityId)
-      .lte('starts_at', date.toISOString())
-      .gte('ends_at', date.toISOString())
-      .maybeSingle();
+      .lt('starts_at', slotEnd.toISOString())
+      .gt('ends_at', slotStart.toISOString());
+    if (overrideError)
+      throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check schedule overrides.');
+    const closure = (overrides ?? []).find((item) => item.closed);
+    if (closure) return { open: false, reason: closure.reason ?? 'Facility closed' };
 
-    if (overrides) {
-      if (overrides.closed) {
-        return { open: false, reason: overrides.reason ?? 'Facility closed' };
-      }
-      // If not closed, check if the slot falls within override hours
-      // For simplicity, if there's a non-closed override, we allow but this could be extended
+    const schedule = await this.getScheduleForDate(facilityId, date);
+    if (!schedule) return { open: false, reason: 'Facility closed on this day' };
+    const opensAt = businessDateTime(date, schedule.opens_at.slice(0, 5));
+    const closesAt = businessDateTime(date, schedule.closes_at.slice(0, 5));
+    if (slotStart < opensAt || slotEnd > closesAt) {
+      return {
+        open: false,
+        reason: `Facility open hours: ${schedule.opens_at} - ${schedule.closes_at}`,
+      };
     }
-
-    // Check regular schedule
-    const { data: schedule } = await this.supabase
-      .from('schedules')
-      .select('opens_at, closes_at')
-      .eq('facility_id', facilityId)
-      .eq('weekday', weekday)
-      .maybeSingle();
-
-    if (!schedule) {
-      return { open: false, reason: 'Facility closed on this day' };
-    }
-
-    const opensMinutes = this.timeToMinutes(schedule.opens_at);
-    const closesMinutes = this.timeToMinutes(schedule.closes_at);
-
-    if (startMinutes < opensMinutes || endMinutes > closesMinutes) {
-      return { open: false, reason: `Facility open hours: ${schedule.opens_at} - ${schedule.closes_at}` };
-    }
-
     return { open: true };
-  }
-
-  private timeToMinutes(time: string): number {
-    const parts = time.split(':');
-    const hours = Number(parts[0]);
-    const minutes = Number(parts[1]);
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      throw new HttpError(400, 'INVALID_TIME', 'Invalid time format');
-    }
-    return hours * 60 + minutes;
   }
 }
 
 export class PricingService {
-  constructor(private supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient) {}
 
   async getPrice(
     facilityId: string,
@@ -236,17 +199,10 @@ export class PricingService {
       .or(`effective_to.is.null,effective_to.gte.${at.toISOString()}`)
       .order('effective_from', { ascending: false })
       .limit(1);
-
-    if (addonId) {
-      query = query.eq('addon_id', addonId);
-    } else {
-      query = query.is('addon_id', null);
-    }
-
+    query = addonId ? query.eq('addon_id', addonId) : query.is('addon_id', null);
     const { data, error } = await query.maybeSingle();
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch pricing.');
-    return data ?? null;
+    return data;
   }
 
   async getAllPricing(facilityId: string): Promise<PricingTier[]> {
@@ -256,125 +212,118 @@ export class PricingService {
       .eq('facility_id', facilityId)
       .order('duration_hours')
       .order('effective_from', { ascending: false });
-
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch pricing tiers.');
-    return data ?? [];
+    return (data ?? []) as PricingTier[];
   }
 }
 
 export class AvailabilityService {
-  private supabase: SupabaseClient;
-
   constructor(
-    private schedulesService: SchedulesService,
-    private pricingService: PricingService,
-  ) {
-    this.supabase = schedulesService['supabase'] as SupabaseClient;
-  }
+    private readonly supabase: SupabaseClient,
+    private readonly schedulesService: SchedulesService,
+    private readonly pricingService: PricingService,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async checkSlotAvailability(
     facilityId: string,
-    date: Date, // Asia/Kolkata date
-    startTime: string, // HH:mm
+    date: string,
+    startTime: string,
     durationHours: BookingDurationHours,
     addonId: string | null,
   ): Promise<SlotAvailability> {
-    // Check if slot is in the past (using server time in Asia/Kolkata)
-    const now = new Date();
-    const slotStart = new Date(date);
-    const timeParts = startTime.split(':');
-    const hours = Number(timeParts[0]);
-    const minutes = Number(timeParts[1]);
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return this.createUnavailableResponse(facilityId, date, startTime, durationHours, 'Invalid time format');
-    }
-    slotStart.setHours(hours, minutes, 0, 0);
-
-    if (slotStart <= now) {
-      return this.createUnavailableResponse(facilityId, date, startTime, durationHours, 'Slot is in the past');
-    }
-
-    // Check facility schedule
-    const { open, reason } = await this.schedulesService.isFacilityOpen(
+    const slotStart = businessDateTime(date, startTime);
+    if (slotStart <= this.now())
+      return this.unavailable(facilityId, date, startTime, durationHours, 'Slot is in the past');
+    const schedule = await this.schedulesService.isFacilityOpen(
       facilityId,
       date,
       startTime,
       durationHours,
     );
+    if (!schedule.open)
+      return this.unavailable(
+        facilityId,
+        date,
+        startTime,
+        durationHours,
+        schedule.reason ?? 'Facility closed',
+      );
 
-    if (!open) {
-      return this.createUnavailableResponse(facilityId, date, startTime, durationHours, reason ?? 'Facility not available');
-    }
-
-    // Check for existing bookings that overlap
-    const slotEnd = new Date(slotStart.getTime() + durationHours * 60 * 60 * 1000);
-
+    const slotEnd = new Date(slotStart.getTime() + durationHours * 3_600_000);
     const { data: conflicts, error } = await this.supabase
       .from('bookings')
       .select('id, starts_at, duration_hours')
-      .eq('status', 'confirmed')
+      .eq('facility_id', facilityId)
+      .in('status', ['pending', 'confirmed'])
       .lt('starts_at', slotEnd.toISOString())
-      .gte('starts_at', slotStart.toISOString())
-      .limit(1);
-
+      .gt('starts_at', new Date(slotStart.getTime() - 2 * 3_600_000).toISOString());
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check availability.');
-
-    // Also check bookings that start before but end after our slot starts
-    const { data: conflicts2, error: error2 } = await this.supabase
-      .from('bookings')
-      .select('id, starts_at, duration_hours')
-      .eq('status', 'confirmed')
-      .lt('starts_at', slotStart.toISOString())
-      .gte('starts_at', new Date(slotStart.getTime() - 2 * 60 * 60 * 1000).toISOString()) // max 2 hours before
-      .limit(10);
-
-    if (error2) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check availability.');
-
-    // Check overlap for conflicts2
-    const hasOverlap = (conflicts2 ?? []).some((b) => {
-      const bookingStart = new Date(b.starts_at);
-      const bookingEnd = new Date(bookingStart.getTime() + b.duration_hours * 60 * 60 * 1000);
-      return bookingEnd > slotStart;
+    const overlaps = (conflicts ?? []).some((booking) => {
+      const bookingStart = new Date(booking.starts_at);
+      const bookingEnd = new Date(
+        bookingStart.getTime() + Number(booking.duration_hours) * 3_600_000,
+      );
+      return bookingStart < slotEnd && bookingEnd > slotStart;
     });
-
-    if ((conflicts && conflicts.length > 0) || hasOverlap) {
-      return this.createUnavailableResponse(facilityId, date, startTime, durationHours, 'Slot already booked');
+    if (overlaps)
+      return this.unavailable(facilityId, date, startTime, durationHours, 'Slot already booked');
+    if (!(await this.pricingService.getPrice(facilityId, addonId, durationHours, slotStart))) {
+      return this.unavailable(facilityId, date, startTime, durationHours, 'Pricing not configured');
     }
+    return { facilityId, date, startTime, durationHours, available: true };
+  }
 
-    // Check pricing exists
-    const price = await this.pricingService.getPrice(facilityId, addonId, durationHours);
-    if (!price) {
-      return this.createUnavailableResponse(facilityId, date, startTime, durationHours, 'Pricing not configured for this selection');
+  async listAvailability(
+    facilityId: string,
+    date: string,
+    durationHours: BookingDurationHours,
+    addonId: string | null,
+  ): Promise<AvailabilityListing> {
+    const serverNow = this.now();
+    const schedule = await this.schedulesService.getScheduleForDate(facilityId, date);
+    if (!schedule)
+      return {
+        serverNow: serverNow.toISOString(),
+        businessTimeZone: 'Asia/Kolkata',
+        date,
+        durationHours,
+        slots: [],
+      };
+    const opens = businessDateTime(date, schedule.opens_at.slice(0, 5));
+    const closes = businessDateTime(date, schedule.closes_at.slice(0, 5));
+    const slots: AvailabilityListing['slots'] = [];
+    for (
+      let instant = opens;
+      instant.getTime() + durationHours * 3_600_000 <= closes.getTime();
+      instant = new Date(instant.getTime() + 3_600_000)
+    ) {
+      const startTime = businessTime(instant);
+      const result = await this.checkSlotAvailability(
+        facilityId,
+        date,
+        startTime,
+        durationHours,
+        addonId,
+      );
+      if (result.available) slots.push({ startTime, startsAt: instant.toISOString() });
     }
-
     return {
-      facility_id: facilityId,
-      date: date.toISOString().split('T')[0] ?? '',
-      start_time: startTime,
-      duration_hours: durationHours,
-      available: true,
+      serverNow: serverNow.toISOString(),
+      businessTimeZone: 'Asia/Kolkata',
+      date,
+      durationHours,
+      slots,
     };
   }
 
-  private createUnavailableResponse(
+  private unavailable(
     facilityId: string,
-    date: Date,
+    date: string,
     startTime: string,
     durationHours: BookingDurationHours,
     reason: string,
   ): SlotAvailability {
-    return {
-      facility_id: facilityId,
-      date: date.toISOString().split('T')[0] ?? '',
-      start_time: startTime,
-      duration_hours: durationHours,
-      available: false,
-      reason,
-    };
-  }
-
-  setSupabase(client: SupabaseClient) {
-    this.supabase = client;
-    this.schedulesService.setSupabase(client);
+    return { facilityId, date, startTime, durationHours, available: false, reason };
   }
 }

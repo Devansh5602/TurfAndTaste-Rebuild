@@ -17,6 +17,34 @@ export const bookingDurationHoursSchema = z.union([
   z.literal(BOOKING_DURATION_HOURS[1]),
 ]);
 
+export const businessDateSchema = z.iso.date();
+export const businessTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+
+export const availabilityRequestSchema = z.object({
+  facilityKey: facilityKeySchema,
+  date: businessDateSchema,
+  durationHours: bookingDurationHoursSchema,
+  addOnKey: addOnKeySchema.optional(),
+});
+
+export const quoteSelectionSchema = availabilityRequestSchema.extend({
+  startTime: businessTimeSchema,
+});
+
+export const createBookingSchema = quoteSelectionSchema.extend({
+  quoteId: z.uuid(),
+});
+
+export const bookingIdSchema = z.uuid();
+
+export const bookingStatusSchema = z.enum([
+  'pending',
+  'confirmed',
+  'cancelled',
+  'completed',
+  'no_show',
+]);
+
 export const UNAUTHORIZED_SPORTS = [
   'football',
   'tennis',

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { HttpError } from '../errors/http-error';
-import { createSupabaseClient } from '../db/supabase';
+import { createSupabaseAdmin, createSupabaseClient } from '../db/supabase';
 import type { ApiEnv } from '../config/env';
 import type { AuthDomain } from '@turf-and-taste/types';
 
@@ -78,7 +78,26 @@ export function createAuthMiddleware(env: ApiEnv) {
       return;
     }
 
-    // User exists in auth but not in either profile table
+    // Repair a missing profile for pre-trigger customer accounts without trusting a client id.
+    const fullName =
+      typeof user.user_metadata.full_name === 'string' && user.user_metadata.full_name.trim()
+        ? user.user_metadata.full_name.trim()
+        : 'Customer';
+    const admin = createSupabaseAdmin(env);
+    const { data: provisionedProfile, error: provisioningError } = await admin
+      .from('customer_profiles')
+      .insert({ id: user.id, full_name: fullName, email: user.email, phone: user.phone })
+      .select('id, email, phone')
+      .single();
+    if (!provisioningError && provisionedProfile) {
+      req.user = {
+        id: provisionedProfile.id,
+        domain: 'customer',
+        email: provisionedProfile.email ?? user.email,
+        phone: provisionedProfile.phone ?? user.phone,
+      };
+      req.supabase = supabase;
+    }
     next();
   };
 }
@@ -91,7 +110,11 @@ export function requireAuth(req: AuthenticatedRequest, _res: Response, next: Nex
 }
 
 export function requireDomain(...domains: AuthDomain[]) {
-  return function domainMiddleware(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
+  return function domainMiddleware(
+    req: AuthenticatedRequest,
+    _res: Response,
+    next: NextFunction,
+  ): void {
     if (!req.user) {
       throw new HttpError(401, 'UNAUTHENTICATED', 'Authentication required.');
     }
