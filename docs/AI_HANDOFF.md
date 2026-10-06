@@ -2,113 +2,153 @@
 
 ## Current checkpoint
 
-- Branch: `feature/customer-mobile-auth-discovery`
-- Base: `develop` at `2566034`
-- Phase: customer mobile authentication and database-backed facility discovery checkpoint
-- Runtime: Node.js 22 is required (`.node-version` is `22`; `package.json` requires `>=22.13.0`)
-- Do not merge to `main`; open a PR to `develop`
-- Do not begin booking or payment work without following `docs/DEVELOPMENT_PLAN.md`
+- Branch: `feature/customer-mobile-booking`
+- Starting `develop` HEAD: `d418f7b45ad67885c691ede9eb52d85044b0e442`
+- Latest local HEAD: record with `git rev-parse HEAD` after the final Phase 3 checkpoint commit
+- Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
+- Target PR branch: `develop`; do not merge to `main`
 
-## Completed at this checkpoint
+## Phase 3 modules
 
-### Customer mobile shell
+### Booking API and database boundary
 
-- React Navigation separates signed-out and signed-in customer flows.
-- The root app keeps the global query client and global persisted theme provider.
-- Clubhouse Ivory and Midnight Ivory continue to use shared semantic design tokens.
-- Loading state is shown while the customer session is restored.
+- Corrected route composition so facility and booking endpoints live at their intended `/api/v1/*` paths.
+- Added strict shared schemas for facility, calendar date, local time, duration, quote selection, booking creation, booking status, and UUID inputs.
+- Added Asia/Kolkata-safe conversion helpers; server clock determines whether slots are in the past.
+- Added a forward-only booking-integrity migration; prior migrations are unchanged and no database reset was performed.
+- Added persistent customer-bound `booking_quotes` with server amount, currency, selection, expiry, and one-time consumption.
+- Added `facility_id`, `addon_id`, and `quote_id` to bookings for authoritative reservation identity.
+- Added a PostgreSQL exclusion constraint for overlapping `pending` or `confirmed` reservations on one facility.
+- Added a service-role-only transactional `create_booking_from_quote` function that locks and validates the quote, creates the pending booking and item together, consumes the quote, and maps overlap races to a conflict.
+- Removed direct customer insert/update RLS policies for bookings; customers retain own-record reads.
+- Added automatic customer-profile provisioning for real Supabase Auth users and backfill for existing auth users.
 
-### Real Supabase customer authentication
+### Availability and quotes
 
-- Mobile uses the configured public Supabase URL and anon key; no customer identity is hardcoded.
-- Sign-up submits email, password, and full name to Supabase Auth.
-- Sign-in uses Supabase password authentication.
-- Sign-out clears the Supabase session and returns to the signed-out flow.
-- Password-reset email requests use the `turfandtaste://reset-password` redirect.
-- Auth sessions use `expo-secure-store`; theme preference remains in AsyncStorage.
-- Auth state is restored at startup and follows Supabase auth state changes and token refreshes.
-- React Hook Form fields use `Controller` so React Native `onChangeText` values reach validation and submission.
+- Availability is generated from weekly schedules in one-hour starts for backend-supported 1- or 2-hour durations.
+- Full slot intervals are checked against server time, schedule boundaries, schedule-override closures, pricing eligibility, and pending/confirmed bookings for the selected facility.
+- Availability responses include `serverNow` and `businessTimeZone: Asia/Kolkata`.
+- Shooting Machine is validated through the real facility/add-on relationship and only appears for Cricket Green Net Practice.
+- Quote pricing is read from server pricing tiers; the client never submits or calculates an authoritative total.
+- Quotes expire after 15 minutes and are bound to the authenticated customer.
+- Any service/date/time/duration/add-on change clears the mobile quote.
 
-### Facility discovery
+### Mobile booking journey
 
-- Home and Facilities screens request active facilities from the real API with the current customer access token.
-- Loading, recoverable error, empty, populated, and pull-to-refresh states are present.
-- Facility detail navigation uses the stable `FacilityKey`, not a database id cast.
-- Facility detail reads the real facility, allowed add-ons, weekly schedule, and server pricing.
-- Shooting Machine is represented only as an add-on returned for Cricket Green Net Practice.
-- No fixture data is presented as production data and no unauthorized sport was added.
-- No booking creation, quote, payment, cart, checkout, or client-side price-authority flow was introduced.
+- Facility Detail now starts the booking flow with a stable `FacilityKey`.
+- Booking steps cover date, backend-supported duration, allowed option, real availability, server quote, review, and booking creation.
+- Date choices are future Asia/Kolkata dates. Final date/time authority remains on the API.
+- Loading, empty, error, retry, refresh, disabled, stale-quote, expired-quote, and slot-conflict states are handled.
+- Successful creation navigates to Booking Detail and invalidates My Bookings.
+- Booking Detail shows the booking reference, facility, date/time, duration, add-on, server total, and actual status. It explicitly says no payment has been collected.
+- My Bookings lists only the authenticated customer's API-filtered records with loading, error, empty, refresh, and detail navigation.
 
-### API client and UI support
+## Booking state and payment boundary
 
-- The authenticated API helper adds the bearer token and unwraps the repository API envelope.
-- Facility discovery client methods cover list, detail, schedule, and pricing only.
-- API envelope success and failure behavior has focused tests.
-- Native primitives gained the variants, validation text, and layout hooks required by these screens while continuing to use design tokens.
+- Phase 3 creates `pending` bookings only.
+- The mobile label is `Awaiting payment`.
+- No Razorpay UI, payment capture, payment-success flag, confirmation, refund, cancellation, pass, or QR was added.
+- Future payment work must consume the existing pending booking and confirm only after server-side payment verification.
 
-### TypeScript repair
+## Security and ownership
 
-The mobile TypeScript failure was structural, not parser corruption:
+- Customer identity always comes from the verified API principal.
+- Quote and booking bodies contain no customer id, amount, privileged status, or payment result.
+- Quotes are owned by and validated against the authenticated customer.
+- Booking list/detail queries include authenticated ownership filters; another customer's booking resolves as not found.
+- Direct customer booking writes are removed from RLS. The transaction function is executable only by `service_role`.
+- Supabase service-role and payment secrets remain server-only and are not present in mobile code or documentation.
 
-1. `apps/mobile/tsconfig.json` had lost `expo/tsconfig.base` and had been replaced with Node16/CommonJS and classic JSX settings.
-2. Temporary local declarations shadowed React Native and TanStack Query types.
-3. Mobile had been pinned to TanStack Query 4 while source used the workspace catalog's TanStack Query 5 API.
-4. Source then exposed ordinary route, API arity, strict-null, and unused-declaration errors.
+## Tests and verification
 
-The Expo inheritance is restored, temporary declaration shims are gone, and mobile uses `@tanstack/react-query: catalog:`.
+- Shared booking tests cover strict dates/times, Asia/Kolkata conversion, authorized facilities, supported durations, and quote-ID requirements.
+- Quote-service tests cover real facility/add-on lookup, server pricing, and unavailable-slot rejection.
+- Booking-service tests cover database collision mapping and prove the RPC receives authenticated identity and quote id rather than a client total.
+- Existing product tests continue to enforce authorized sports, Shooting Machine ownership, durations, stale quote selection, and past-slot rules.
+- Run final gates on Node 22:
 
-## Verification
-
-Checkpoint verification on Node 22:
-
-```text
-pnpm install   passed
-pnpm lint      passed
-pnpm typecheck passed
-pnpm test      passed
-pnpm build     passed
+```bash
+pnpm lint
+pnpm --filter @turf-and-taste/mobile typecheck
+pnpm typecheck
+pnpm test
+pnpm build
+git diff --check
 ```
 
-Focused API-client coverage is now 4 tests. Repository tests cover 22 tests in total at this checkpoint. Native Android/iOS builds were not run.
+Native Android/iOS builds were not run.
 
-## Security and repository hygiene
+## Migration status
 
-- Tracked `.env` files contain dotenvx-encrypted values and public encryption metadata, not plaintext secrets.
-- `.env.keys` files remain local and gitignored.
-- No service-role key, payment secret, access token, password, or private dotenvx key is committed.
-- No generated native projects, `.expo` output, build output, diagnostic declaration shims, or backup files are part of the checkpoint.
-- Public mobile Supabase URL/anon configuration is used only for the client-side auth behavior Supabase expects.
+The hosted database already contained the three Phase 1 migrations. The Supabase CLI linked-project dry run identified exactly one pending migration:
+
+```text
+20261006183000_booking_integrity.sql
+```
+
+This migration must be applied to the linked non-production Supabase project before end-to-end manual booking tests. Do not reset the database. Review the dry run, then use the established linked-project migration workflow.
+
+## Manual testing commands
+
+Use Node 22 and existing local `.env.keys`; never print secret values:
+
+```bash
+nvm use 22
+pnpm install
+pnpm env:api echo "API environment available"
+pnpm env:mobile echo "Mobile environment available"
+
+# Terminal 1: API
+pnpm env:api pnpm --filter @turf-and-taste/api dev
+
+# Terminal 2: Expo development client / Metro
+pnpm env:mobile pnpm --filter @turf-and-taste/mobile dev
+```
+
+Use a development build on an emulator/device that can reach `EXPO_PUBLIC_API_URL`. A real Supabase customer account and applied Phase 3 migration are required.
+
+## Manual smoke checklist
+
+1. Sign in with a real customer account.
+2. Open one of the four authorized facilities.
+3. Tap **Start booking**.
+4. Choose a future date.
+5. Choose a duration offered by backend pricing.
+6. Verify real available slots load; closed/past/conflicting slots do not appear.
+7. Verify Shooting Machine appears only for Cricket Green Net Practice.
+8. Select a slot and request the server quote.
+9. Review the server total and expiry; change an input and verify the quote clears.
+10. Create the booking and confirm status is **Awaiting payment**.
+11. Open My Bookings and verify the booking appears; open its detail.
+12. Refresh and restart the app; verify the authenticated session and booking history reload.
+13. In a second customer session, verify the first customer's booking is inaccessible.
+14. Attempt the same slot concurrently and verify one request receives the friendly conflict response.
 
 ## Known gaps
 
-- The app requests sign-up verification and password-recovery emails from the real Supabase project, but inbound email deep-link completion and a reset-password form still require device-level completion before the authentication phase can be considered end-to-end complete under `docs/DEVELOPMENT_PLAN.md`.
-- Auth and discovery screens do not yet have a mobile component/integration test harness; API-envelope behavior is unit tested and repository static gates pass.
-- Facility discovery requires the API and hosted Supabase data to be reachable from the physical device/emulator.
-- Native Android/iOS builds and physical-device interaction checks remain outstanding.
-- Profile editing and customer booking history are intentionally deferred; the account screen currently exposes identity and sign-out only.
+- The Phase 3 migration is committed but not automatically applied by application startup; it must be applied through the linked Supabase migration workflow.
+- Native device interaction and concurrent two-customer smoke tests remain manual checkpoint tasks.
+- Availability currently uses one-hour start increments because the domain durations are one and two hours; finer increments require an explicit product decision.
+- Open (`closed = false`) schedule overrides are not treated as expanded operating hours; closure overrides are authoritative and supported.
+- No pagination UI is needed yet; the API bounds My Bookings to 100 records.
+- Email verification/recovery deep-link completion remains a prior auth handoff gap and is not broadened here.
 
-## Exact next starting point
+## Exact next phase
 
-Before starting a later product phase, complete the remaining Phase 2 device checkpoint: configure and validate the `turfandtaste://` verification/recovery callback on a development build, add the reset-password completion screen, and verify session restoration after an app restart.
-
-Then follow the repository's authoritative phase sequence in `docs/DEVELOPMENT_PLAN.md`. For Phase 3, validate on-device that the database-backed discovery flow renders exactly the four authorized facilities and exposes Shooting Machine only under Cricket Green Net Practice. Do not start the Phase 4 booking flow until that Phase 3 exit criterion is recorded as complete.
+Phase 4 is payment integration for an existing pending booking: create a Razorpay test order on the server, launch checkout in the Expo development build, verify signatures/webhooks server-side, and transition the booking to `confirmed` only after verified payment. Do not trust a client payment-success flag and do not expose Razorpay secrets to mobile.
 
 ## Multi-device recovery
-
-On a fresh machine:
 
 ```bash
 git clone <repository-url>
 cd TurfAndTaste-Rebuild
-git switch feature/customer-mobile-auth-discovery
-
-# Use Node 22 (the repository requires >=22.13.0).
+git switch feature/customer-mobile-booking
 nvm install 22
 nvm use 22
 corepack enable
 pnpm install
 
-# Securely transfer these local-only files from the trusted machine:
+# Securely transfer local-only files; never commit or print their contents:
 # apps/api/.env.keys
 # apps/web/.env.keys
 # apps/mobile/.env.keys
@@ -116,11 +156,8 @@ pnpm install
 pnpm env:api echo "API environment available"
 pnpm env:web echo "Web environment available"
 pnpm env:mobile echo "Mobile environment available"
-
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
 ```
-
-Never paste key contents into source, documentation, logs, issues, chat, or commits. See `docs/ENVIRONMENT_WORKFLOW.md` for rotation and recovery details.

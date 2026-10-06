@@ -11,12 +11,13 @@ import {
   Skeleton,
 } from '@turf-and-taste/ui-native';
 import { SafeAreaView, ScrollView, View, Text } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { CustomerStackScreenProps } from '../../navigation/types';
 
 export function FacilityDetailScreen() {
   const { getAccessToken } = useAuth();
   const route = useRoute<CustomerStackScreenProps<'FacilityDetail'>['route']>();
+  const navigation = useNavigation<CustomerStackScreenProps<'FacilityDetail'>['navigation']>();
   const facilityKey = route.params.facilityKey;
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 
@@ -163,13 +164,11 @@ export function FacilityDetailScreen() {
           <View className="gap-4">
             <SectionHeader title="Ready to book?" />
             <Text className="text-body text-text-secondary">
-              Booking functionality coming in the next phase.
+              Choose a date, duration, and real available time before requesting a server quote.
             </Text>
             <Button
-              variant="outline"
-              label="View availability (coming soon)"
-              onPress={() => {}}
-              disabled
+              label="Start booking"
+              onPress={() => navigation.navigate('Booking', { facilityKey })}
             />
           </View>
         </Card>
