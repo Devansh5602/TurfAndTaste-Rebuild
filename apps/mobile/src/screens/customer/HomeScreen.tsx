@@ -92,6 +92,11 @@ export function HomeScreen() {
             <View className="flex-row flex-wrap gap-3">
               <Button
                 variant="outline"
+                label="My Bookings"
+                onPress={() => navigation.navigate('MyBookings')}
+              />
+              <Button
+                variant="outline"
                 label="Profile"
                 onPress={() => navigation.navigate('Profile')}
               />

@@ -7,6 +7,9 @@ import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { HomeScreen } from '../screens/customer/HomeScreen';
 import { FacilitiesScreen } from '../screens/customer/FacilitiesScreen';
 import { FacilityDetailScreen } from '../screens/customer/FacilityDetailScreen';
+import { BookingScreen } from '../screens/customer/BookingScreen';
+import { BookingDetailScreen } from '../screens/customer/BookingDetailScreen';
+import { MyBookingsScreen } from '../screens/customer/MyBookingsScreen';
 import { ProfileScreen } from '../screens/customer/ProfileScreen';
 import { LoadingState } from '@turf-and-taste/ui-native';
 import { useEffect, useState } from 'react';
@@ -29,6 +32,9 @@ export function CustomerNavigator() {
       <CustomerStack.Screen name="Home" component={HomeScreen} />
       <CustomerStack.Screen name="Facilities" component={FacilitiesScreen} />
       <CustomerStack.Screen name="FacilityDetail" component={FacilityDetailScreen} />
+      <CustomerStack.Screen name="Booking" component={BookingScreen} />
+      <CustomerStack.Screen name="MyBookings" component={MyBookingsScreen} />
+      <CustomerStack.Screen name="BookingDetail" component={BookingDetailScreen} />
       <CustomerStack.Screen name="Profile" component={ProfileScreen} />
     </CustomerStack.Navigator>
   );
@@ -57,6 +63,9 @@ export function RootNavigator() {
           <RootStack.Screen name="Home" component={CustomerNavigator} />
           <RootStack.Screen name="Facilities" component={FacilitiesScreen} />
           <RootStack.Screen name="FacilityDetail" component={FacilityDetailScreen} />
+          <RootStack.Screen name="Booking" component={BookingScreen} />
+          <RootStack.Screen name="MyBookings" component={MyBookingsScreen} />
+          <RootStack.Screen name="BookingDetail" component={BookingDetailScreen} />
           <RootStack.Screen name="Profile" component={ProfileScreen} />
         </>
       ) : (
