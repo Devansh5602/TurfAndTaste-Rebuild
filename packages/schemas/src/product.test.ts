@@ -4,9 +4,13 @@ import {
   addOnKeySchema,
   allowsShootingMachine,
   bookingDurationHoursSchema,
+  createPaymentOrderSchema,
   facilityKeySchema,
   isPastSlot,
+  paymentOrderStatusSchema,
+  paymentStatusSchema,
   quoteMatchesSelection,
+  verifyPaymentSchema,
 } from './product';
 import { businessDate } from './time';
 
@@ -54,5 +58,45 @@ describe('product rules', () => {
   it('interprets business dates in Asia/Kolkata', () => {
     expect(businessDate(new Date('2026-10-03T18:30:00.000Z'))).toBe('2026-10-04');
     expect(businessDate(new Date('2026-10-03T18:00:00.000Z'))).toBe('2026-10-03');
+  });
+});
+
+describe('payment input rules', () => {
+  const bookingId = '5c4a7b82-a8a0-4ef9-8c98-68eb36f63f66';
+
+  it('identifies the booking without trusting a client-supplied amount', () => {
+    const parsed = createPaymentOrderSchema.parse({ bookingId });
+    expect(parsed).toEqual({ bookingId });
+    // The schema does not model an amount field, so a client total can never
+    // flow into order creation; the server reads the booking quote instead.
+    expect('amountPaise' in parsed).toBe(false);
+    expect(createPaymentOrderSchema.safeParse({}).success).toBe(false);
+    expect(createPaymentOrderSchema.safeParse({ bookingId: 'not-a-uuid' }).success).toBe(false);
+  });
+
+  it('requires a complete checkout result to verify a payment', () => {
+    expect(
+      verifyPaymentSchema.safeParse({
+        providerOrderId: 'order_1',
+        providerPaymentId: 'pay_1',
+        signature: 'sig',
+      }).success,
+    ).toBe(true);
+    expect(verifyPaymentSchema.safeParse({ providerOrderId: 'order_1' }).success).toBe(false);
+    expect(
+      verifyPaymentSchema.safeParse({
+        providerOrderId: 'order_1',
+        providerPaymentId: 'pay_1',
+        signature: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('covers only known provider states', () => {
+    expect(paymentOrderStatusSchema.safeParse('created').success).toBe(true);
+    expect(paymentOrderStatusSchema.safeParse('paid').success).toBe(true);
+    expect(paymentOrderStatusSchema.safeParse('settled').success).toBe(false);
+    expect(paymentStatusSchema.safeParse('captured').success).toBe(true);
+    expect(paymentStatusSchema.safeParse('authorized').success).toBe(false);
   });
 });

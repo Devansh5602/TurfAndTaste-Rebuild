@@ -87,3 +87,64 @@ export function quoteMatchesSelection(quote: QuoteSelection, selection: QuoteSel
 export function isPastSlot(slotStart: Date, now: Date): boolean {
   return slotStart.getTime() < now.getTime();
 }
+
+export const paymentOrderStatusSchema = z.enum([
+  'created',
+  'paid',
+  'failed',
+  'expired',
+  'refunded',
+]);
+
+export const paymentStatusSchema = z.enum([
+  'captured',
+  'failed',
+  'refunded',
+]);
+
+export const createPaymentOrderSchema = z.object({
+  // The server derives the payable amount from the booking's quoted total.
+  // The client only identifies which pending booking it wants to pay for.
+  bookingId: z.uuid(),
+});
+
+export const verifyPaymentSchema = z.object({
+  providerOrderId: z.string().min(1),
+  providerPaymentId: z.string().min(1),
+  signature: z.string().min(1),
+});
+
+export const razorpayKeyResponseSchema = z.object({
+  keyId: z.string().min(1),
+});
+
+export interface PaymentOrder {
+  id: string;
+  bookingId: string;
+  provider: 'razorpay';
+  providerOrderId: string;
+  amountPaise: number;
+  currency: string;
+  status: z.infer<typeof paymentOrderStatusSchema>;
+  createdAt: string;
+}
+
+export interface Payment {
+  id: string;
+  paymentOrderId: string;
+  provider: 'razorpay';
+  providerPaymentId: string;
+  status: z.infer<typeof paymentStatusSchema>;
+  verifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatePaymentOrderInput {
+  bookingId: string;
+}
+
+export interface VerifyPaymentInput {
+  providerOrderId: string;
+  providerPaymentId: string;
+  signature: string;
+}

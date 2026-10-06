@@ -49,12 +49,13 @@ export function BookingDetailScreen() {
     );
   const booking = query.data;
   const item = booking.items[0];
+  const isPending = booking.status === 'pending';
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView contentContainerClassName="gap-6 px-6 py-8">
         <PageHeader
-          title="Booking created"
-          description="Awaiting payment — no payment has been collected."
+          title={isPending ? 'Booking Created' : 'Booking Confirmed'}
+          description={isPending ? 'Awaiting payment — no payment has been collected.' : 'Payment verified and booking confirmed.'}
         />
         <Card>
           <View className="gap-4">
@@ -90,7 +91,13 @@ export function BookingDetailScreen() {
             />
           </View>
         </Card>
-        <Button label="View My Bookings" onPress={() => navigation.navigate('MyBookings')} />
+        {isPending ? (
+          <Button
+            label="Pay Now"
+            onPress={() => navigation.navigate('Payment', { bookingId: booking.id })}
+          />
+        ) : null}
+        <Button variant="outline" label="View My Bookings" onPress={() => navigation.navigate('MyBookings')} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -75,3 +75,11 @@ Web primitives sit on Radix, class-variance-authority, and Sonner, in the shadcn
 Status: accepted
 
 `supabase/drafts/domain-model.sql` is a design draft. It is not a migration and must not be applied to the hosted database during Phase 0.
+
+## ADR 012 — Server-authoritative payment verification
+
+Status: accepted
+
+The client identifies which pending booking it wants to pay for and sends back the raw Razorpay checkout result. It never sends a payable amount: `createPaymentOrderSchema` carries only `bookingId`, the API derives the amount from the booking's stored quote, and the server verifies the checkout signature, re-fetches the payment from Razorpay, and cross-checks the captured amount against the stored order before the booking becomes `confirmed`. A client success flag is never trusted.
+
+The Razorpay webhook authenticates with an HMAC-SHA256 signature over the exact raw request body using `RAZORPAY_WEBHOOK_SECRET` (captured by `express.json`'s `verify` hook). The webhook route is mounted outside customer authentication because Razorpay calls it directly; every other payment route requires a customer session. Webhook and verify processing share one idempotent persistence path so provider retries and client retries are safe, a paid order is never downgraded, and booking confirmation failures surface to the caller instead of being swallowed.

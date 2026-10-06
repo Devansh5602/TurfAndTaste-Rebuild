@@ -11,6 +11,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   RAZORPAY_KEY_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   RAZORPAY_KEY_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  RAZORPAY_WEBHOOK_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;

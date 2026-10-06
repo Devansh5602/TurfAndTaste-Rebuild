@@ -2,11 +2,39 @@
 
 ## Current checkpoint
 
-- Branch: `feature/customer-mobile-booking`
-- Starting `develop` HEAD: `d418f7b45ad67885c691ede9eb52d85044b0e442`
-- Latest local HEAD: record with `git rev-parse HEAD` after the final Phase 3 checkpoint commit
+- Branch: `feature/customer-mobile-payments`
+- Starting `develop` HEAD: `0f5332d7ba287e57fae2bec131eff97ff57708c8`
+- Latest local HEAD: record with `git rev-parse HEAD` after the final Phase 4 checkpoint commit
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
+
+## Phase 4 modules
+
+### Payment API and verification boundary
+
+- `POST /api/v1/payments/orders` creates a Razorpay order for an existing `pending` booking. The client sends only `bookingId`; the API reads the booking's stored quoted amount and currency, enforces ownership and payable status, and never accepts a client-supplied total.
+- `GET /api/v1/payments/orders/booking/:bookingId` returns the latest payment order for the owning customer; a missing order resolves as 404.
+- `POST /api/v1/payments/verify` verifies the Razorpay checkout signature (`HMAC-SHA256` of `payment_id|order_id` with the key secret), re-fetches the payment from Razorpay, requires `captured` status, cross-checks the captured amount and currency against the stored order, and confirms the booking only after all checks pass. Ownership is enforced; verification is idempotent so retries return the recorded payment instead of failing on the unique `provider_payment_id` constraint.
+- `GET /api/v1/payments/razorpay/key` returns the public key id only. The key secret and webhook secret never leave the server.
+- `POST /api/v1/payments/webhook/razorpay` is mounted outside customer authentication because Razorpay calls it directly. It verifies an HMAC-SHA256 signature over the exact raw request body (captured by `express.json`'s `verify` hook) with the server-only `RAZORPAY_WEBHOOK_SECRET`, and processes `captured`/`failed`/`refunded` events idempotently. Unknown orders are acknowledged without writes; a paid order is never downgraded by a late event.
+- Verify and webhook processing share one persistence path: payment order status, payment record, and booking confirmation. A failed booking update after verified payment surfaces as a database error so the client can retry safely.
+- Provider outages map to `502 PAYMENT_PROVIDER_ERROR`; missing configuration maps to `503 PAYMENT_NOT_CONFIGURED`.
+- `payment_orders` and `payments` tables and customer read policies already existed in the initial schema migration; no new migration was added in Phase 4.
+
+### Mobile payment journey
+
+- Booking Detail now shows **Pay Now** for `pending` bookings and reflects `confirmed` after verification.
+- The Payment screen loads the server booking total, the Razorpay key id, and any existing payment order; it shows loading, error, retry, and paid states.
+- An outstanding `created` payment order is reused instead of creating a duplicate; checkout launches `react-native-razorpay` with the server order id and amount.
+- Checkout results are sent to the server for verification; the booking is confirmed only from the server response. Invalidating booking queries updates Booking Detail and My Bookings.
+- Payment states use `Badge` variants and existing primitives; the checkout theme color comes from design tokens.
+
+### Payment state boundary
+
+- The client never sends a payable amount or a payment-success flag.
+- Razorpay secrets (`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) stay in the API environment.
+- Development uses Razorpay test mode only. The screen labels the flow as a test payment.
+- Refunds, cancellation, passes, and QR remain out of scope.
 
 ## Phase 3 modules
 
@@ -45,10 +73,10 @@
 
 ## Booking state and payment boundary
 
-- Phase 3 creates `pending` bookings only.
-- The mobile label is `Awaiting payment`.
-- No Razorpay UI, payment capture, payment-success flag, confirmation, refund, cancellation, pass, or QR was added.
-- Future payment work must consume the existing pending booking and confirm only after server-side payment verification.
+- Phase 3 creates `pending` bookings; Phase 4 payment verification transitions them to `confirmed`.
+- The mobile label before payment is `Awaiting payment`.
+- Confirmation happens only after server-side signature verification and a provider-confirmed captured payment.
+- No refund, cancellation, pass, or QR UI exists yet.
 
 ## Security and ownership
 
@@ -65,6 +93,9 @@
 - Quote-service tests cover real facility/add-on lookup, server pricing, and unavailable-slot rejection.
 - Booking-service tests cover database collision mapping and prove the RPC receives authenticated identity and quote id rather than a client total.
 - Existing product tests continue to enforce authorized sports, Shooting Machine ownership, durations, stale quote selection, and past-slot rules.
+- Payment schema tests cover booking-only order creation (no client amount), complete checkout verification input, and provider state enums.
+- Payment service tests cover server-side amount derivation, ownership refusal, non-pending refusal, provider-failure mapping, invalid signatures, captured-and-amount-matched confirmation, repeated verification idempotency, raw-body webhook signatures, webhook fail-closed configuration, unknown-order acknowledgement, and paid-order downgrade protection.
+- API route tests cover payment-order auth requirements and the webhook staying outside customer authentication.
 - Run final gates on Node 22:
 
 ```bash
@@ -123,6 +154,12 @@ Use a development build on an emulator/device that can reach `EXPO_PUBLIC_API_UR
 12. Refresh and restart the app; verify the authenticated session and booking history reload.
 13. In a second customer session, verify the first customer's booking is inaccessible.
 14. Attempt the same slot concurrently and verify one request receives the friendly conflict response.
+15. On a `pending` booking, tap **Pay Now** and confirm the Payment screen shows the server total, reference, and test-mode notice.
+16. Create a payment order; confirm the amount shown equals the booking's server total and no duplicate order is created when returning to the screen.
+17. Complete Razorpay test checkout with a test method; confirm the booking flips to **confirmed** only after verification and Booking Detail reflects it.
+18. Cancel checkout; confirm a friendly cancel alert and that the booking remains `pending`.
+19. Kill and restart the app; confirm the paid booking reloads as confirmed and the Payment screen shows the paid state.
+20. Retry verification after a network interruption; confirm no duplicate payment error surfaces.
 
 ## Known gaps
 
@@ -132,17 +169,21 @@ Use a development build on an emulator/device that can reach `EXPO_PUBLIC_API_UR
 - Open (`closed = false`) schedule overrides are not treated as expanded operating hours; closure overrides are authoritative and supported.
 - No pagination UI is needed yet; the API bounds My Bookings to 100 records.
 - Email verification/recovery deep-link completion remains a prior auth handoff gap and is not broadened here.
+- Razorpay orders are created without an explicit auto-capture setting, so capture behavior follows the dashboard's account-level default. A payment left `authorized` is not confirmed by the API; the webhook can still record `failed`/`refunded` outcomes. Confirm the test account's capture setting before end-to-end payment tests.
+- The webhook endpoint must be registered in the Razorpay dashboard with `RAZORPAY_WEBHOOK_SECRET`; webhook delivery itself cannot be exercised locally without a tunnel.
+- `expired` payment-order status is modeled but never set; there is no order-expiry job yet.
+- Refunds are out of scope; the `refunded` status only appears if the provider reports it.
 
 ## Exact next phase
 
-Phase 4 is payment integration for an existing pending booking: create a Razorpay test order on the server, launch checkout in the Expo development build, verify signatures/webhooks server-side, and transition the booking to `confirmed` only after verified payment. Do not trust a client payment-success flag and do not expose Razorpay secrets to mobile.
+Phase 5 is booking fulfillment beyond payment: enforce capture settings deliberately (decide auto-capture vs manual capture as a recorded decision), then build the customer pass/QR for confirmed bookings. Payment refunds, cancellation policy, and staff-facing payment views require explicit product decisions first. Do not merge into `main` without an explicit request.
 
 ## Multi-device recovery
 
 ```bash
 git clone <repository-url>
 cd TurfAndTaste-Rebuild
-git switch feature/customer-mobile-booking
+git switch feature/customer-mobile-payments
 nvm install 22
 nvm use 22
 corepack enable

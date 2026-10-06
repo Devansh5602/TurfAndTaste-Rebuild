@@ -1,5 +1,5 @@
 import type { AddOnKey, BookingDurationHours, FacilityKey } from '@turf-and-taste/types';
-import { authenticatedRequest } from './client';
+import { authenticatedRequest, ApiClientError } from './client';
 
 export interface AvailabilitySlot {
   startTime: string;
@@ -117,4 +117,76 @@ export async function getBooking(
   bookingId: string,
 ): Promise<Booking> {
   return authenticatedRequest<Booking>(baseUrl, `/api/v1/bookings/${bookingId}`, accessToken);
+}
+
+export interface PaymentOrder {
+  id: string;
+  bookingId: string;
+  provider: 'razorpay';
+  providerOrderId: string;
+  amountPaise: number;
+  currency: string;
+  status: 'created' | 'paid' | 'failed' | 'expired' | 'refunded';
+  createdAt: string;
+}
+
+export interface Payment {
+  id: string;
+  paymentOrderId: string;
+  provider: 'razorpay';
+  providerPaymentId: string;
+  status: 'captured' | 'failed' | 'refunded';
+  verifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface RazorpayKeyResponse {
+  keyId: string;
+}
+
+export async function createPaymentOrder(
+  baseUrl: string,
+  accessToken: string,
+  bookingId: string,
+): Promise<PaymentOrder> {
+  return authenticatedRequest<PaymentOrder>(baseUrl, '/api/v1/payments/orders', accessToken, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ bookingId }),
+  });
+}
+
+export async function getPaymentOrder(
+  baseUrl: string,
+  accessToken: string,
+  bookingId: string,
+): Promise<PaymentOrder | null> {
+  try {
+    return await authenticatedRequest<PaymentOrder>(baseUrl, `/api/v1/payments/orders/booking/${bookingId}`, accessToken);
+  } catch (error: unknown) {
+    if (error instanceof ApiClientError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function verifyPayment(
+  baseUrl: string,
+  accessToken: string,
+  input: { providerOrderId: string; providerPaymentId: string; signature: string },
+): Promise<Payment> {
+  return authenticatedRequest<Payment>(baseUrl, '/api/v1/payments/verify', accessToken, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getRazorpayKeyId(
+  baseUrl: string,
+  accessToken: string,
+): Promise<string> {
+  const response = await authenticatedRequest<RazorpayKeyResponse>(baseUrl, '/api/v1/payments/razorpay/key', accessToken);
+  return response.keyId;
 }

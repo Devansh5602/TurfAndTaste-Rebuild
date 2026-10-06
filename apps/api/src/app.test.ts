@@ -42,6 +42,36 @@ describe('api foundation', () => {
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
 
+  it('requires authentication for payment order routes', async () => {
+    const response = await request(app)
+      .post('/api/v1/payments/orders')
+      .send({ bookingId: '5c4a7b82-a8a0-4ef9-8c98-68eb36f63f66' });
+    expect(response.status).toBe(401);
+    expect(response.body.data).toBeNull();
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('rejects a Razorpay webhook that carries no provider signature', async () => {
+    const response = await request(app)
+      .post('/api/v1/payments/webhook/razorpay')
+      .set('content-type', 'application/json')
+      .send({ payload: {} });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('MISSING_SIGNATURE');
+  });
+
+  it('keeps the Razorpay webhook outside customer authentication', async () => {
+    // A signature header and raw body reach the service; the 503 proves no
+    // 401 guard ran in front of it and that it fails closed when unconfigured.
+    const response = await request(app)
+      .post('/api/v1/payments/webhook/razorpay')
+      .set('content-type', 'application/json')
+      .set('x-razorpay-signature', 'a'.repeat(64))
+      .send({ payload: {} });
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('PAYMENT_NOT_CONFIGURED');
+  });
+
   it('rejects invalid input without leaking schema details', () => {
     expect(() => parseInput(bookingDurationHoursSchema, 1.5)).toThrow('The request payload is invalid.');
   });

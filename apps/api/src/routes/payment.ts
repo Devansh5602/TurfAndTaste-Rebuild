@@ -1,49 +1,31 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import {
+  createPaymentOrderSchema,
+  verifyPaymentSchema,
+} from '@turf-and-taste/schemas';
 import { parseInput } from '../utils/validate';
 import { currentRequestId } from '../middleware/request-id';
 import { success } from '../utils/response';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import type { PaymentService } from '../services/payment';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { HttpError } from '../errors/http-error';
 
-export function createPaymentRoutes(
-  supabase: SupabaseClient,
-  paymentService: PaymentService,
-) {
+export function createPaymentRoutes(paymentService: PaymentService) {
   const router = Router();
 
-  // Create payment order for a booking
-  const createOrderSchema = z.object({
-    bookingId: z.string().uuid(),
-    amountPaise: z.number().int().positive(),
-    currency: z.string().default('INR'),
-  });
-
+  // Create payment order for a pending booking. The payable amount always comes
+  // from the server-side booking quote; the client only sends the booking id.
   router.post('/orders', async (req: AuthenticatedRequest, res, next) => {
     try {
       if (!req.user || req.user.domain !== 'customer') {
-        return res.status(401).json(success(null, currentRequestId(res)));
+        throw new HttpError(401, 'UNAUTHORIZED', 'Authentication required.');
       }
 
-      const input = parseInput(createOrderSchema, req.body);
+      const input = parseInput(createPaymentOrderSchema, req.body);
 
-      // Verify booking belongs to customer
-      const { data: booking } = await supabase
-        .from('bookings')
-        .select('customer_profile_id, status, quoted_amount_paise, currency')
-        .eq('id', input.bookingId)
-        .maybeSingle();
-
-      if (!booking || booking.customer_profile_id !== req.user.id) {
-        return res.status(404).json(success(null, currentRequestId(res)));
-      }
-
-      if (booking.status !== 'pending') {
-        return res.status(400).json(success({ error: 'Booking not in payable state' }, currentRequestId(res)));
-      }
-
-      const order = await paymentService.createOrder(input.bookingId, input.amountPaise, input.currency);
+      // The service re-reads the booking and derives the authoritative amount.
+      // Ownership and payable status are validated before the provider is called.
+      const order = await paymentService.createOrder(input.bookingId, req.user.id);
       res.json(success(order, currentRequestId(res)));
     } catch (error) {
       next(error);
@@ -54,14 +36,17 @@ export function createPaymentRoutes(
   router.get('/orders/booking/:bookingId', async (req: AuthenticatedRequest, res, next) => {
     try {
       if (!req.user || req.user.domain !== 'customer') {
-        return res.status(401).json(success(null, currentRequestId(res)));
+        throw new HttpError(401, 'UNAUTHORIZED', 'Authentication required.');
       }
 
       const bookingId = Array.isArray(req.params.bookingId) ? req.params.bookingId[0] : req.params.bookingId;
       if (!bookingId) {
-        return res.status(400).json(success(null, currentRequestId(res)));
+        throw new HttpError(400, 'INVALID_BOOKING_ID', 'Booking ID is required.');
       }
       const order = await paymentService.getPaymentOrder(bookingId, req.user.id);
+      if (!order) {
+        throw new HttpError(404, 'PAYMENT_ORDER_NOT_FOUND', 'No payment order found for this booking.');
+      }
       res.json(success(order, currentRequestId(res)));
     } catch (error) {
       next(error);
@@ -69,23 +54,18 @@ export function createPaymentRoutes(
   });
 
   // Verify payment (called after Razorpay checkout)
-  const verifySchema = z.object({
-    providerOrderId: z.string(),
-    providerPaymentId: z.string(),
-    signature: z.string(),
-  });
-
   router.post('/verify', async (req: AuthenticatedRequest, res, next) => {
     try {
       if (!req.user || req.user.domain !== 'customer') {
-        return res.status(401).json(success(null, currentRequestId(res)));
+        throw new HttpError(401, 'UNAUTHORIZED', 'Authentication required.');
       }
 
-      const input = parseInput(verifySchema, req.body);
+      const input = parseInput(verifyPaymentSchema, req.body);
       const payment = await paymentService.verifyPayment(
         input.providerOrderId,
         input.providerPaymentId,
         input.signature,
+        req.user.id,
       );
 
       res.json(success(payment, currentRequestId(res)));
@@ -99,7 +79,7 @@ export function createPaymentRoutes(
     try {
       const keyId = paymentService.getRazorpayKeyId();
       if (!keyId) {
-        return res.status(503).json(success({ error: 'Payment not configured' }, currentRequestId(res)));
+        throw new HttpError(503, 'PAYMENT_NOT_CONFIGURED', 'Payment is not configured.');
       }
       res.json(success({ keyId }, currentRequestId(res)));
     } catch (error) {
@@ -107,15 +87,28 @@ export function createPaymentRoutes(
     }
   });
 
-  // Razorpay webhook
-  router.post('/webhook/razorpay', async (req: AuthenticatedRequest, res, next) => {
+  return router;
+}
+
+// Razorpay calls this endpoint directly, so it must not sit behind customer
+// authentication. Authenticity comes from the Razorpay webhook signature over
+// the raw request body, verified with the server-only webhook secret.
+export function createPaymentWebhookRoutes(paymentService: PaymentService) {
+  const router = Router();
+
+  router.post('/razorpay', async (req: AuthenticatedRequest, res, next) => {
     try {
       const signature = req.header('x-razorpay-signature');
       if (!signature) {
-        return res.status(400).json(success({ error: 'Missing signature' }, currentRequestId(res)));
+        throw new HttpError(400, 'MISSING_SIGNATURE', 'Missing webhook signature.');
       }
 
-      await paymentService.handleWebhook(req.body, signature);
+      const rawBody = req.rawBody;
+      if (!rawBody || rawBody.length === 0) {
+        throw new HttpError(400, 'MISSING_RAW_BODY', 'Missing webhook body.');
+      }
+
+      await paymentService.handleWebhook(rawBody, signature);
       res.json(success({ received: true }, currentRequestId(res)));
     } catch (error) {
       next(error);

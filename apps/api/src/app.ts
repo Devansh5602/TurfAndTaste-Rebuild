@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import pino from 'pino';
@@ -27,7 +27,16 @@ export function createApp(env: ApiEnv): Express {
       },
     }),
   );
-  app.use(express.json({ limit: '1mb' }));
+  // The webhook route verifies Razorpay signatures over the exact raw body bytes,
+  // so the raw body must be preserved before JSON parsing.
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        (req as Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    }),
+  );
   app.use(requestId);
 
   if (env.NODE_ENV !== 'test') {

@@ -19,6 +19,7 @@ export type RootStackParamList = {
   Booking: { facilityKey: FacilityKey };
   MyBookings: undefined;
   BookingDetail: { bookingId: string };
+  Payment: { bookingId: string };
   Profile: undefined;
 };
 
@@ -41,6 +42,7 @@ export type CustomerStackParamList = {
   Booking: { facilityKey: FacilityKey };
   MyBookings: undefined;
   BookingDetail: { bookingId: string };
+  Payment: { bookingId: string };
   Profile: undefined;
 };
 

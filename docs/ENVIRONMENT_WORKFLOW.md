@@ -59,6 +59,7 @@ Each encrypted file contains:
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (bypasses RLS) |
 | `RAZORPAY_KEY_ID` | Razorpay test key ID |
 | `RAZORPAY_KEY_SECRET` | Razorpay test secret key |
+| `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook signing secret (dashboard) |
 
 ### Web Public (Safe for Browser Bundle)
 
@@ -121,6 +122,7 @@ pnpm dlx @dotenvx/dotenvx set --file .env --no-native SUPABASE_URL "https://your
 pnpm dlx @dotenvx/dotenvx set --file .env --no-native SUPABASE_SERVICE_ROLE_KEY "sb_secret_..."
 pnpm dlx @dotenvx/dotenvx set --file .env --no-native RAZORPAY_KEY_ID "rzp_test_..."
 pnpm dlx @dotenvx/dotenvx set --file .env --no-native RAZORPAY_KEY_SECRET "..."
+pnpm dlx @dotenvx/dotenvx set --file .env --no-native RAZORPAY_WEBHOOK_SECRET "..."
 
 # Web - encrypt public variables
 cd ../web

@@ -34,6 +34,7 @@
     "react-hook-form": "catalog:",
     "react-native": "0.86.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-razorpay": "^3.0.0",
     "react-native-reanimated": "~4.1.0",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@types/react": "catalog:",
+    "@types/react-native-razorpay": "^2.2.6",
     "tailwindcss": "^3.4.17",
     "typescript": "catalog:"
   }

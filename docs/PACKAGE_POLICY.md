@@ -43,9 +43,11 @@ One library per job. Date handling is date-fns and date-fns-tz. HTTP from the ap
 | Testing Library React | Web components | ui-web | DOM queries by role | enzyme |
 | Supertest | HTTP tests | api | Exercises the Express app | mocking listen() |
 | tsup | API bundle | api | Bundles workspace TS for Node | running raw .ts in production |
+| razorpay | Payment provider SDK | api | Server-side order creation and payment fetch | hand-rolled REST calls |
+| react-native-razorpay (+ @types) | Mobile checkout | mobile | Maintained native Razorpay checkout for the dev client | a webview payment flow |
 
 Licenses for these packages are permissive (MIT, Apache-2.0, or ISC) at the versions installed. Re-check the license if a major upgrade changes it.
 
 Native module versions are aligned with Expo SDK 57. Change them with `expo install`, not by guessing a React Native version.
 
-Razorpay's React Native SDK is not installed in Phase 0 because no checkout exists yet. Add it in the payments phase, inside the dev client, with the secret remaining on the server.
+The Razorpay SDKs were added in the payments phase. They run inside the API and the Expo development build; key secret and webhook secret remain server-only.

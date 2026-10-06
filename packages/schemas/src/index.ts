@@ -11,12 +11,23 @@ export {
   businessDateSchema,
   businessTimeSchema,
   createBookingSchema,
+  createPaymentOrderSchema,
   facilityKeySchema,
   isPastSlot,
+  paymentOrderStatusSchema,
+  paymentStatusSchema,
   quoteMatchesSelection,
   quoteSelectionSchema,
+  razorpayKeyResponseSchema,
+  verifyPaymentSchema,
 } from './product';
-export type { QuoteSelection } from './product';
+export type {
+  CreatePaymentOrderInput,
+  Payment,
+  PaymentOrder,
+  QuoteSelection,
+  VerifyPaymentInput,
+} from './product';
 export {
   BUSINESS_TIME_ZONE,
   businessDate,

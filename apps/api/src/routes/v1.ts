@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { ApiEnv } from '../config/env';
 import { createAuthMiddleware, requireAuth, requireDomain } from '../middleware/auth';
 import { createBookingRoutes } from './booking';
-import { createPaymentRoutes } from './payment';
+import { createPaymentRoutes, createPaymentWebhookRoutes } from './payment';
 import { createProfileRoutes } from './profile';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AvailabilityService } from '../services/domain';
@@ -33,13 +33,17 @@ export function createV1Router(env: ApiEnv, supabase: SupabaseClient) {
     ),
   );
 
+  // The Razorpay webhook authenticates with a provider signature over the raw
+  // body, not with a customer session, so it stays outside the auth guards.
+  router.use('/payments/webhook', createPaymentWebhookRoutes(paymentService));
+
   // Protected customer routes
   router.use('/profile', requireAuth, requireDomain('customer'), createProfileRoutes(supabase));
   router.use(
     '/payments',
     requireAuth,
     requireDomain('customer'),
-    createPaymentRoutes(supabase, paymentService),
+    createPaymentRoutes(paymentService),
   );
 
   return router;

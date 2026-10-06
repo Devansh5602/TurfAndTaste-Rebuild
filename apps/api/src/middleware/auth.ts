@@ -12,6 +12,8 @@ export interface AuthenticatedRequest extends Request {
     phone?: string;
   };
   supabase?: ReturnType<typeof createSupabaseClient>;
+  // Populated by express.json's verify hook for signature checks over raw bytes.
+  rawBody?: Buffer;
 }
 
 export function createAuthMiddleware(env: ApiEnv) {
