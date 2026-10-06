@@ -70,7 +70,12 @@ using (customer_profile_id = auth.uid());
 alter table public.bookings
   add column facility_id uuid references public.facilities (id),
   add column addon_id uuid references public.facility_addons (id),
-  add column quote_id uuid references public.booking_quotes (id);
+  add column quote_id uuid references public.booking_quotes (id),
+  add column ends_at timestamptz;
+
+update public.bookings
+set ends_at = starts_at + duration_hours * interval '1 hour'
+where ends_at is null;
 
 update public.bookings b
 set facility_id = bi.facility_id,
@@ -85,6 +90,7 @@ where bi.booking_id = b.id
 
 -- Existing orphan rows indicate invalid pre-Phase-3 data and must block deployment.
 alter table public.bookings alter column facility_id set not null;
+alter table public.bookings alter column ends_at set not null;
 
 alter table public.booking_items
   add constraint booking_items_one_per_booking unique (booking_id);
@@ -101,10 +107,14 @@ alter table public.pricing_tiers
 alter table public.bookings
   add constraint bookings_quote_unique unique (quote_id),
   add constraint bookings_quote_expiry_required check (quote_expires_at is not null),
+  add constraint bookings_valid_range check (ends_at > starts_at),
+  add constraint bookings_duration_matches_range check (
+    ends_at = starts_at + duration_hours * interval '1 hour'
+  ),
   add constraint bookings_no_overlap
   exclude using gist (
     facility_id with =,
-    tstzrange(starts_at, starts_at + duration_hours * interval '1 hour', '[)') with &&
+    tstzrange(starts_at, ends_at, '[)') with &&
   ) where (status in ('pending', 'confirmed'));
 
 -- Customers may read their own records, but all authoritative writes go through the API.
@@ -148,6 +158,7 @@ begin
     quote_id,
     status,
     starts_at,
+    ends_at,
     duration_hours,
     quoted_amount_paise,
     currency,
@@ -159,6 +170,7 @@ begin
     v_quote.id,
     'pending',
     v_quote.starts_at,
+    v_quote.starts_at + v_quote.duration_hours * interval '1 hour',
     v_quote.duration_hours,
     v_quote.amount_paise,
     v_quote.currency,

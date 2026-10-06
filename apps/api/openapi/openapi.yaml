@@ -1,64 +1,165 @@
 openapi: 3.1.0
 info:
   title: Turf & Taste API
-  version: 0.0.0
-  description: Phase 0 contract. Business routes are intentionally absent.
+  version: 0.3.0
+  description: Customer authentication-adjacent discovery and server-authoritative booking contract.
 servers:
   - url: http://localhost:4000
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
+      security: []
       operationId: getHealth
       summary: Service health
       responses:
-        '200':
-          description: The API process is serving requests.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
+        '200': { description: Healthy }
+  /api/v1/facilities:
+    get:
+      security: []
+      operationId: listFacilities
+      summary: List active authorized facilities
+      responses:
+        '200': { description: Active facilities }
+  /api/v1/facilities/{key}:
+    get:
+      security: []
+      operationId: getFacility
+      parameters:
+        - $ref: '#/components/parameters/FacilityKey'
+      responses:
+        '200': { description: Facility and allowed add-ons }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/facilities/{key}/schedule:
+    get:
+      security: []
+      operationId: getFacilitySchedule
+      parameters:
+        - $ref: '#/components/parameters/FacilityKey'
+      responses:
+        '200': { description: Weekly schedule }
+  /api/v1/facilities/{key}/pricing:
+    get:
+      security: []
+      operationId: getFacilityPricing
+      parameters:
+        - $ref: '#/components/parameters/FacilityKey'
+      responses:
+        '200': { description: Server pricing tiers }
+  /api/v1/facilities/{key}/availability:
+    get:
+      operationId: getFacilityAvailability
+      parameters:
+        - $ref: '#/components/parameters/FacilityKey'
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: durationHours
+          in: query
+          required: true
+          schema: { type: integer, enum: [1, 2] }
+        - name: addOnKey
+          in: query
+          schema: { type: string, const: shooting-machine }
+      responses:
+        '200': { description: Server-time-filtered available slots }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/bookings/quotes:
+    post:
+      operationId: createBookingQuote
+      summary: Create a customer-bound server quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteSelection' }
+      responses:
+        '201': { description: Server-authoritative quote }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/bookings:
+    get:
+      operationId: listMyBookings
+      summary: List bookings owned by the authenticated customer
+      responses:
+        '200': { description: Customer-owned bookings }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createBooking
+      summary: Atomically consume a quote and create a pending booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/QuoteSelection'
+                - type: object
+                  required: [quoteId]
+                  properties:
+                    quoteId: { type: string, format: uuid }
+      responses:
+        '201': { description: Pending booking awaiting payment }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/bookings/{id}:
+    get:
+      operationId: getMyBooking
+      summary: Read one booking owned by the authenticated customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Customer-owned booking }
+        '404': { $ref: '#/components/responses/Error' }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    FacilityKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/FacilityKey'
+  responses:
+    Error:
+      description: Stable error envelope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
   schemas:
-    HealthResponse:
+    FacilityKey:
+      type: string
+      enum: [box-cricket, skating-rink, pickle-ball, cricket-green-net]
+    QuoteSelection:
       type: object
-      required: [data, error, meta]
+      additionalProperties: false
+      required: [facilityKey, date, startTime, durationHours]
       properties:
-        data:
-          type: object
-          required: [status, service, timestamp]
-          properties:
-            status:
-              const: ok
-            service:
-              const: turf-and-taste-api
-            timestamp:
-              type: string
-              format: date-time
-        error:
-          type: 'null'
-        meta:
-          type: object
-          required: [requestId]
-          properties:
-            requestId:
-              type: string
+        facilityKey: { $ref: '#/components/schemas/FacilityKey' }
+        date: { type: string, format: date }
+        startTime: { type: string, pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d$' }
+        durationHours: { type: integer, enum: [1, 2] }
+        addOnKey: { type: string, const: shooting-machine }
     ErrorResponse:
       type: object
       required: [data, error, meta]
       properties:
-        data:
-          type: 'null'
+        data: { type: 'null' }
         error:
           type: object
           required: [code, message]
           properties:
-            code:
-              type: string
-            message:
-              type: string
+            code: { type: string }
+            message: { type: string }
         meta:
           type: object
           required: [requestId]
           properties:
-            requestId:
-              type: string
+            requestId: { type: string }
