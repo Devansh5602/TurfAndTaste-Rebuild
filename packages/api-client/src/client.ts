@@ -1,5 +1,5 @@
 import { healthResponseSchema } from '@turf-and-taste/schemas';
-import type { ApiSuccess, HealthData } from '@turf-and-taste/types';
+import type { ApiResponse, ApiSuccess, HealthData } from '@turf-and-taste/types';
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -52,4 +52,31 @@ export async function getHealth(
   }
 
   return parsed.data;
+}
+
+export async function authenticatedRequest<T>(
+  baseUrl: string,
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(new URL(path, baseUrl), {
+    ...init,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${accessToken}`,
+      ...init?.headers,
+    },
+  });
+
+  const body = (await response.json()) as ApiResponse<T>;
+  if (!response.ok || body.error) {
+    throw new ApiClientError(
+      body.error?.message ?? 'The request failed.',
+      response.status,
+      body.error?.code ?? 'REQUEST_FAILED',
+    );
+  }
+
+  return body.data;
 }

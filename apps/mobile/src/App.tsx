@@ -7,7 +7,6 @@ import {
   useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, Toast } from '@turf-and-taste/ui-native';
@@ -16,9 +15,8 @@ import { useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppErrorBoundary } from './ErrorBoundary';
-import { FoundationScreen } from './FoundationScreen';
-
-const Stack = createNativeStackNavigator();
+import { AuthProvider } from './context/AuthContext';
+import { RootNavigator } from './navigation/RootNavigator';
 
 const themeStorage = {
   getItem: (key: string) => AsyncStorage.getItem(key),
@@ -52,15 +50,15 @@ export function App() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider storage={themeStorage}>
-            <AppErrorBoundary>
-              <NavigationContainer>
-                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                  <Stack.Screen component={FoundationScreen} name="Foundation" />
-                </Stack.Navigator>
-              </NavigationContainer>
-              <StatusBar style="auto" />
-              <Toast />
-            </AppErrorBoundary>
+            <AuthProvider>
+              <AppErrorBoundary>
+                <NavigationContainer>
+                  <RootNavigator />
+                </NavigationContainer>
+                <StatusBar style="auto" />
+                <Toast />
+              </AppErrorBoundary>
+            </AuthProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
