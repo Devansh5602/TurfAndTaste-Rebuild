@@ -38,7 +38,7 @@ The root and API package manifests constrain Node to `^22.13.0`, which keeps Ver
 
 The deployment uses the repository's existing pnpm workspace and lockfile. The API declares `@turf-and-taste/schemas` and `@turf-and-taste/types` as `workspace:*` dependencies; they are not published to npm. Vercel's monorepo support resolves the workspace from the repository root even though the project Root Directory is `apps/api`.
 
-The repository pins pnpm `12.8.1`. As of this runbook's update, Vercel's package-manager reference lists pnpm 6–10, while its Corepack instructions allow a project to request the `packageManager` version from the root manifest. This is a platform compatibility item to verify during the first Preview build. Do not silently downgrade pnpm. If automatic installation does not honor pnpm 12, stop and resolve the mismatch against current Vercel documentation before deploying; do not add legacy routing/build configuration as a workaround.
+The repository pins pnpm `10.34.6`, the newest stable pnpm 10 release available when this runbook was updated. Vercel's package-manager reference supports pnpm through version 10 and explicitly documents lockfile format 9.0 as compatible with pnpm 10. Set `ENABLE_EXPERIMENTAL_COREPACK=1` in the Vercel project so the exact root `packageManager` pin is used. Leave the Install Command automatic; a bare custom `pnpm install` override can select an older pnpm instead of the pinned release.
 
 ## Preview environment variables
 

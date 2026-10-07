@@ -17,7 +17,7 @@ Shared packages hold design tokens, types, Zod schemas, the API client, UI primi
 ## Prerequisites
 
 - Node.js 22 (see `.nvmrc`)
-- pnpm 12.8.1, via Corepack: `corepack enable` then `corepack prepare pnpm@12.8.1 --activate`
+- pnpm 10.34.6, via Corepack: `corepack enable` then `corepack prepare pnpm@10.34.6 --activate`
 - Android Studio when you are ready to run a device build
 
 ## Install

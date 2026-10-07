@@ -26,7 +26,7 @@ a22e99c docs: record Android payment readiness and the device smoke checklist
 ```
 
 - The native/device-readiness checkpoint starts at `0ae66e43b226128442afb8bfbb6a8e9522e408cd`. Run `git log --oneline 0ae66e4..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match. The chain block above lists the checkpoint's code and documentation commits by hash; the final `docs:` commit that pins this block records itself by message only, because a file cannot contain its own commit hash. `git rev-parse HEAD` is authoritative for the tip.
-- Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
+- Runtime: Node.js 22 (`.node-version` is `22`; package engine is `^22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
 ## Vercel API preview-readiness checkpoint
@@ -38,8 +38,9 @@ a22e99c docs: record Android payment readiness and the device smoke checklist
 - Root and API package engines now use `^22.13.0`, constraining Vercel to Node 22 instead of allowing the broad `>=22.13.0` range to select a later major. The API build target remains `node22`.
 - `ws` moved from API development dependencies to runtime dependencies because the Supabase server client imports it and the tsup build externalizes it.
 - Added entry, health, CORS, and raw webhook-body regression coverage. Originless native requests remain allowed, the exact `WEB_ORIGIN` remains allowed, and arbitrary browser origins remain rejected. Razorpay's webhook remains outside customer auth and verifies the signature over the exact raw bytes.
-- The separate Preview project is `turf-and-taste-rebuild-api`, connected to `Devansh5602/TurfAndTaste-Rebuild` with Root Directory `apps/api`. Exact dashboard settings, environment names, health verification, mobile URL usage, Razorpay TEST webhook configuration, and the documented pnpm 12 compatibility caveat are in `docs/VERCEL_API_PREVIEW.md`.
-- Vercel's current package-manager page lists pnpm 6–10 while this repository deliberately uses pnpm 12.8.1 for native readiness. No downgrade was made and no unsupported workaround was added. The first authorized Preview build must verify automatic/Corepack installation against current Vercel support and stop if pnpm 12 is not honored.
+- The separate Preview project is `turf-and-taste-rebuild-api`, connected to `Devansh5602/TurfAndTaste-Rebuild` with Root Directory `apps/api`. Exact dashboard settings, environment names, health verification, mobile URL usage, Razorpay TEST webhook configuration, and pnpm/Corepack requirements are in `docs/VERCEL_API_PREVIEW.md`.
+- Vercel's current package-manager page lists pnpm 6–10 and explicitly supports lockfile format 9.0 with pnpm 10. After Preview installation failed because the pnpm 12 wrapper was unavailable, the repository pinned pnpm 10.34.6, the newest stable pnpm 10 release at the checkpoint. The existing lockfile dependency graph was preserved; pnpm 10 removed only pnpm 12's embedded package-manager wrapper preamble. `ENABLE_EXPERIMENTAL_COREPACK=1` remains required in Vercel Preview.
+- pnpm 10.34.6 frozen installation, API gates, root gates, and `git diff --check` pass. `vercel deploy --dry --json` reports 131 files / 896,616 bytes and excludes mobile, Android, `dist`, and `.next`. Local `vercel build` was not executed because the CLI had no pulled Project Settings and correctly stopped before building; do not pull Preview secrets or deploy as part of this checkpoint.
 
 ## Phase 4 modules
 

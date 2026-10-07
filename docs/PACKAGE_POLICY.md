@@ -8,7 +8,7 @@ One library per job. Date handling is date-fns and date-fns-tz. HTTP from the ap
 
 | Package | Job | Where | Why | Not chosen |
 | --- | --- | --- | --- | --- |
-| pnpm 12.8.1 | Install and workspaces | repo | Current pnpm line, pinned for Corepack | npm, Yarn |
+| pnpm 10.34.6 | Install and workspaces | repo | Newest Vercel-supported pnpm 10 release, pinned for Corepack | npm, Yarn |
 | Turborepo 2 | Task graph | repo | Small monorepo task runner | Nx |
 | TypeScript 5.9.3 | Types | all | Newest line the ESLint parser accepts | TypeScript 7, blocked by typescript-eslint |
 | Next.js 16.3.8 | Web | web | Required stack, current security patch | — |
@@ -57,7 +57,7 @@ Native module versions are aligned with Expo SDK 57. Change them with `expo inst
 
 One deliberate deviation remains: Expo recommends `typescript@~6.0.3` for SDK 57, but TypeScript 6.0.3 drops the `@types/jest` globals `apps/mobile` needs and `pnpm --filter @turf-and-taste/mobile typecheck` fails on it. The repo stays on TypeScript 5.9.3 from the catalog and `apps/mobile/package.json` declares `expo.install.exclude: ["typescript"]` so the deviation is explicit instead of reappearing as an unexplained doctor failure. TypeScript does not participate in Metro, prebuild, or Gradle.
 
-pnpm 12 reads project settings from `pnpm-workspace.yaml`, not `.npmrc`. `nodeLinker: hoisted` lives there and is authoritative; the values in `.npmrc` are kept only for older pnpm and are ignored by 12.8.1. Metro resolves from the workspace-root `node_modules`, so the install must stay hoisted. After switching an existing checkout to this layout, if a workspace script fails with a stale `node_modules/.pnpm/...` path in `node_modules/.bin`, run `rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install`.
+`nodeLinker: hoisted` lives in `pnpm-workspace.yaml` and is also mirrored by `node-linker=hoisted` in `.npmrc`, so pnpm 10 preserves the workspace-root layout required by Metro. Catalogs, `workspace:*`, `minimumReleaseAgeExclude`, and the Expo release-age exclusions remain supported and unchanged. After changing pnpm versions, if a workspace script fails with a stale `node_modules/.pnpm/...` path in `node_modules/.bin`, run `rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install`.
 
 `apps/mobile` must not take `@react-native/jest-preset` as a direct dependency. See ADR 013.
 

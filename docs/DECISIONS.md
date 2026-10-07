@@ -6,7 +6,7 @@ Lightweight architecture decision records. Do not reverse these casually.
 
 Status: accepted
 
-The monorepo uses pnpm 12 workspaces and Turborepo. pnpm is pinned in `packageManager` and activated with Corepack in CI. Node.js 22 is pinned with `.nvmrc` and `.node-version`.
+The monorepo uses pnpm 10 workspaces and Turborepo. pnpm is pinned in `packageManager` and activated with Corepack in CI. Node.js 22 is pinned with `.nvmrc` and `.node-version`.
 
 Alternatives: npm workspaces, Yarn, Nx. pnpm plus Turborepo is enough for three apps and shared packages without another orchestration layer.
 
@@ -112,4 +112,12 @@ The API may run as a separate Vercel Express project for Preview/staging and And
 
 Current Vercel Express support recognizes `src/index.ts` and routes the exported application without custom configuration, so no `vercel.json` is added. Legacy `builds` and `routes` configuration is explicitly avoided. The API project uses `apps/api` as its Root Directory and stays separate from the web and all Track A projects. Initial credentials are Preview/test-only; deployment and production promotion require separate authorization.
 
-The root and API Node engine range is `^22.13.0`. This preserves the repository's minimum while constraining Vercel to Node 22; the previous `>=22.13.0` could resolve to a later supported major. The repository remains on pnpm 12.8.1 because downgrading it would disturb completed native-readiness work, even though Vercel's current package-manager reference only lists pnpm through 10. The first authorized Preview build must verify support and stop rather than apply an undocumented workaround if installation fails.
+The root and API Node engine range is `^22.13.0`. This preserves the repository's minimum while constraining Vercel to Node 22; the previous `>=22.13.0` could resolve to a later supported major.
+
+## ADR 016 — Vercel-supported pnpm 10 runtime
+
+Status: accepted
+
+The repository pins pnpm 10.34.6, the newest stable pnpm 10 release available when this decision was recorded. Vercel's current package-manager reference supports pnpm through major 10 and explicitly accepts lockfile format 9.0 with pnpm 10. With `ENABLE_EXPERIMENTAL_COREPACK=1`, Vercel reads the exact root `packageManager` pin instead of selecting from the lockfile alone.
+
+The compatibility change does not alter the workspace structure or application dependencies. pnpm 10 consumes the existing version-9 lockfile; the only lockfile normalization removes pnpm 12's embedded package-manager wrapper preamble. Catalogs, `workspace:*` links, the hoisted node linker, `minimumReleaseAgeExclude`, Expo alignment, and security exclusions remain intact.

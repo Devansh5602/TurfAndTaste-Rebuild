@@ -47,6 +47,6 @@ minimumReleaseAgeExclude:
   - expo@57.0.27
   - expo-linking@57.0.12
 
-# pnpm 12 reads project settings from this file, not .npmrc. Metro resolves
-# from the workspace-root node_modules, so the install must be hoisted.
+# Keep the linker explicit here and in .npmrc. Metro resolves from the
+# workspace-root node_modules, so the install must remain hoisted.
 nodeLinker: hoisted
