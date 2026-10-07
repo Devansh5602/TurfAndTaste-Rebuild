@@ -7,7 +7,7 @@ Phase 0 is the foundation. Product screens, booking endpoints, and the productio
 ```text
 apps/web        Next.js App Router, Tailwind CSS 4, Vercel target
 apps/mobile     Expo SDK 57 dev client, NativeWind, Android first
-apps/api        Express 5, tsup bundle, hosted Node target
+apps/api        Express 5, tsup bundle, hosted Node or Vercel Functions target
 packages/design-tokens
 packages/types
 packages/schemas
@@ -136,7 +136,7 @@ Service-role keys never enter web or mobile.
 | Surface | Target | Phase 0 |
 | --- | --- | --- |
 | Web | Vercel | not deployed |
-| API | hosted Node process | not deployed |
+| API | hosted Node process or separate Vercel Express project | not deployed |
 | Database | existing Supabase project | not migrated |
 | Mobile | Android APK/AAB via EAS | not built |
 

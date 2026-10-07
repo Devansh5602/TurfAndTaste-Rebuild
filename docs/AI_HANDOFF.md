@@ -29,6 +29,18 @@ a22e99c docs: record Android payment readiness and the device smoke checklist
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
+## Vercel API preview-readiness checkpoint
+
+- Starting HEAD: `bda313bba45969e832471293668a57f886d85fd8` on `feature/customer-mobile-payments`; local and remote were synchronized and the tree was clean after `git fetch origin`.
+- This is deployment readiness only. No Vercel project was created, linked, or deployed, and Phase 5 was not started.
+- `apps/api/src/index.ts` is the zero-configuration Vercel Express entry. It default-exports `createApp(readEnv())` and never calls `listen`; `apps/api/src/server.ts` retains the local/hosted Node listener. Shared application construction moved to `apps/api/src/application.ts` without middleware or route duplication.
+- No `vercel.json` was added. Current Vercel Express support detects `src/index.ts`, preserves the Express route paths, and does not require legacy `builds`/`routes` configuration.
+- Root and API package engines now use `^22.13.0`, constraining Vercel to Node 22 instead of allowing the broad `>=22.13.0` range to select a later major. The API build target remains `node22`.
+- `ws` moved from API development dependencies to runtime dependencies because the Supabase server client imports it and the tsup build externalizes it.
+- Added entry, health, CORS, and raw webhook-body regression coverage. Originless native requests remain allowed, the exact `WEB_ORIGIN` remains allowed, and arbitrary browser origins remain rejected. Razorpay's webhook remains outside customer auth and verifies the signature over the exact raw bytes.
+- The separate Preview project is `turf-and-taste-rebuild-api`, connected to `Devansh5602/TurfAndTaste-Rebuild` with Root Directory `apps/api`. Exact dashboard settings, environment names, health verification, mobile URL usage, Razorpay TEST webhook configuration, and the documented pnpm 12 compatibility caveat are in `docs/VERCEL_API_PREVIEW.md`.
+- Vercel's current package-manager page lists pnpm 6–10 while this repository deliberately uses pnpm 12.8.1 for native readiness. No downgrade was made and no unsupported workaround was added. The first authorized Preview build must verify automatic/Corepack installation against current Vercel support and stop if pnpm 12 is not honored.
+
 ## Phase 4 modules
 
 ### Payment API and verification boundary

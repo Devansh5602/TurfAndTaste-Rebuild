@@ -259,6 +259,9 @@ importers:
       uuid:
         specifier: ^11.1.0
         version: 11.1.1
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -296,9 +299,6 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@22.20.5)(jsdom@27.4.0(@noble/hashes@1.8.0)(supports-color@8.1.1))(vite@8.3.2(@types/node@22.20.5)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
-      ws:
-        specifier: ^8.22.0
-        version: 8.22.0
 
   apps/mobile:
     dependencies:

@@ -299,6 +299,9 @@ Set these as environment variables in your hosting platform:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `RAZORPAY_KEY_ID`
 - `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+
+For the separate Vercel API Preview project, `PORT` is not required and real values are configured directly in the Vercel dashboard rather than committed dotenvx files. See `docs/VERCEL_API_PREVIEW.md` for the Preview-only setup and secret boundaries.
 
 ---
 

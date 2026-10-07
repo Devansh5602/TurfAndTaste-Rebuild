@@ -103,3 +103,13 @@ The repo declared `node-linker=hoisted` in `.npmrc`, but pnpm 12.8.1 reads proje
 The same checkpoint realigned the mobile app to the installed Expo SDK 57 with `expo install --fix` rather than by editing versions by hand, so the package now matches `expo/bundledNativeModules.json`. Two side effects were kept deliberately: `expo-splash-screen` replaced the root `splash` key, which the SDK 57 config schema rejects and which prebuild was silently ignoring (the generated splash used Expo's default artwork on white instead of the app's ivory), and the removed `newArchEnabled` key was dropped because SDK 57 has no such option. `expo-install` release-age exclusions were added to `minimumReleaseAgeExclude` because the freshly published Expo packages fail the repo's supply-chain policy without them.
 
 TypeScript was **not** moved to the Expo-recommended `~6.0.3`. It broke `@types/jest` globals and failed `apps/mobile` typechecking, it has no bearing on Metro, prebuild, or Gradle, and 5.9.3 is the version the ESLint parser was chosen for. `expo.install.exclude` records the deviation. Revisit only alongside a deliberate TypeScript upgrade for the whole workspace.
+
+## ADR 015 — Separate Vercel Express Preview project
+
+Status: accepted
+
+The API may run as a separate Vercel Express project for Preview/staging and Android testing while retaining the conventional hosted Node entry. `apps/api/src/index.ts` is the serverless boundary: it default-exports the existing `createApp(readEnv())` application without calling `listen`. `apps/api/src/server.ts` remains the local and long-running Node entry and calls the same factory before opening `env.PORT`. This changes deployment topology without duplicating middleware, routes, Supabase access, payment verification, or webhook handling.
+
+Current Vercel Express support recognizes `src/index.ts` and routes the exported application without custom configuration, so no `vercel.json` is added. Legacy `builds` and `routes` configuration is explicitly avoided. The API project uses `apps/api` as its Root Directory and stays separate from the web and all Track A projects. Initial credentials are Preview/test-only; deployment and production promotion require separate authorization.
+
+The root and API Node engine range is `^22.13.0`. This preserves the repository's minimum while constraining Vercel to Node 22; the previous `>=22.13.0` could resolve to a later supported major. The repository remains on pnpm 12.8.1 because downgrading it would disturb completed native-readiness work, even though Vercel's current package-manager reference only lists pnpm through 10. The first authorized Preview build must verify support and stop rather than apply an undocumented workaround if installation fails.

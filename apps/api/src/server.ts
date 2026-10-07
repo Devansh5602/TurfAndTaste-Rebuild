@@ -5,7 +5,7 @@ if (process.env.NODE_ENV !== 'production') {
   await import('./polyfills');
 }
 
-import { createApp } from './app';
+import { createApp } from './application';
 import { readEnv } from './config/env';
 
 const env = readEnv();
