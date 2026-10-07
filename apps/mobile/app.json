@@ -7,12 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F3EB"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.turfandtaste.app"
@@ -24,6 +18,19 @@
         "backgroundColor": "#1B4332"
       }
     },
-    "plugins": ["expo-dev-client", "expo-font", "expo-secure-store"]
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F3EB"
+        }
+      ],
+      "expo-dev-client",
+      "expo-font",
+      "expo-secure-store",
+      "expo-status-bar"
+    ]
   }
 }
