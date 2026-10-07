@@ -39,8 +39,10 @@ One library per job. Date handling is date-fns and date-fns-tz. HTTP from the ap
 | pino / pino-http | Logs | api | Structured logs | console.log |
 | express-rate-limit | Rate limit | api | In-process limit for Phase 0 | a custom counter |
 | @supabase/supabase-js | Data and auth SDK | api | Official server SDK | Firebase |
-| Vitest | Unit tests | packages, api | One runner for TS packages | Jest for unit tests |
+| Vitest | Unit tests | packages, api | One runner for TS packages | Jest outside React Native |
 | Testing Library React | Web components | ui-web | DOM queries by role | enzyme |
+| jest-expo 57 | Mobile component tests | mobile | Expo's supported React Native test preset | Vitest for React Native |
+| React Native Testing Library | Mobile component queries | mobile | Queries by text and accessibility label | snapshot-only assertions |
 | Supertest | HTTP tests | api | Exercises the Express app | mocking listen() |
 | tsup | API bundle | api | Bundles workspace TS for Node | running raw .ts in production |
 | razorpay | Payment provider SDK | api | Server-side order creation and payment fetch | hand-rolled REST calls |
@@ -49,5 +51,9 @@ One library per job. Date handling is date-fns and date-fns-tz. HTTP from the ap
 Licenses for these packages are permissive (MIT, Apache-2.0, or ISC) at the versions installed. Re-check the license if a major upgrade changes it.
 
 Native module versions are aligned with Expo SDK 57. Change them with `expo install`, not by guessing a React Native version.
+
+Phase 4 verification found drift against `expo/bundledNativeModules.json`: `react-native-gesture-handler` is on `~2.28.0` where SDK 57 bundles `~2.32.0`, and `react-native-reanimated`, `react-native-worklets`, `react-native-screens`, and `react-native-svg` are also behind. Realign them with `expo install` before the first device build, in one change, with a device smoke test.
+
+`apps/mobile` must not take `@react-native/jest-preset` as a direct dependency. See ADR 013.
 
 The Razorpay SDKs were added in the payments phase. They run inside the API and the Expo development build; key secret and webhook secret remain server-only.

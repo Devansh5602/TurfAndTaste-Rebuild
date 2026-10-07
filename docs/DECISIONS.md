@@ -83,3 +83,13 @@ Status: accepted
 The client identifies which pending booking it wants to pay for and sends back the raw Razorpay checkout result. It never sends a payable amount: `createPaymentOrderSchema` carries only `bookingId`, the API derives the amount from the booking's stored quote, and the server verifies the checkout signature, re-fetches the payment from Razorpay, and cross-checks the captured amount against the stored order before the booking becomes `confirmed`. A client success flag is never trusted.
 
 The Razorpay webhook authenticates with an HMAC-SHA256 signature over the exact raw request body using `RAZORPAY_WEBHOOK_SECRET` (captured by `express.json`'s `verify` hook). The webhook route is mounted outside customer authentication because Razorpay calls it directly; every other payment route requires a customer session. Webhook and verify processing share one idempotent persistence path so provider retries and client retries are safe, a paid order is never downgraded, and booking confirmation failures surface to the caller instead of being swallowed.
+
+## ADR 013 — Mobile component test runner
+
+Status: accepted
+
+Native screens are covered by component tests that run `jest-expo` (Android preset) with React Native Testing Library. Vitest stays the runner for the TypeScript packages and the API; Jest is only used inside `apps/mobile`, where React Native and `babel-preset-expo` have to execute.
+
+React Native must resolve to one installed instance across the workspace. NativeWind's `className` types arrive through `react-native-css-interop`'s `declare module "react-native"` augmentation, and TypeScript will not apply an augmentation to a second copy of `react-native`. `@react-native/jest-preset` is therefore not a direct dependency of `apps/mobile`: `jest-expo` still gets it as an installed peer and falls back to `react-native/jest-preset` when it is absent. Adding it as a direct dependency split `react-native` into two store instances and broke `packages/ui-native` typechecking.
+
+Native-only modules the screens never render, such as `@gorhom/bottom-sheet`, are mapped to a test stub rather than loading the gesture-handler native path. Test query clients use `gcTime: 0` and `staleTime: 0` so TanStack Query's cache timers do not hold the Jest process open.
