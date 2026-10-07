@@ -4,7 +4,18 @@
 
 - Branch: `feature/customer-mobile-payments`
 - Starting `develop` HEAD: `0f5332d7ba287e57fae2bec131eff97ff57708c8`
-- Latest local HEAD: record with `git rev-parse HEAD` after the final Phase 4 checkpoint commit
+- HEAD when this checkpoint opened: `150fd0eaa3f494cfef6fd83d7de7075ca24f4920`
+- Commits added by this checkpoint, oldest first:
+
+```text
+e844c68 test(mobile): add jest-expo component test runner
+4e08515 fix(mobile): let the server booking state gate the payment screen
+16ccbb4 test(mobile): cover Pay visibility on Booking Detail
+20c757d test(api): close payment auth, idempotency and secret-boundary gaps
+cbe044c docs(phase4): record the mobile test runner and the SDK drift found with it
+```
+
+- Latest local HEAD: this file is updated in the final commit of the checkpoint. Run `git rev-parse HEAD` after pushing; it must equal `git rev-parse origin/feature/customer-mobile-payments`.
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
@@ -28,6 +39,15 @@
 - An outstanding `created` payment order is reused instead of creating a duplicate; checkout launches `react-native-razorpay` with the server order id and amount.
 - Checkout results are sent to the server for verification; the booking is confirmed only from the server response. Invalidating booking queries updates Booking Detail and My Bookings.
 - Payment states use `Badge` variants and existing primitives; the checkout theme color comes from design tokens.
+- The Payment screen mirrors the server booking state instead of trusting its own view of it: only `pending` renders a pay action, `confirmed` renders the paid card, and every other state says the booking is no longer open for payment with a way back. The guard is applied both when rendering and inside the checkout handler.
+
+### Mobile component test runner
+
+- `apps/mobile` now has a `test` script: `jest`. Jest and `jest-expo` were chosen over Vitest because React Native and `babel-preset-expo` have to execute in the test environment. See ADR 013 in `docs/DECISIONS.md`.
+- `apps/mobile/jest.config.js` uses the `jest-expo/android` preset, limits `testMatch` to `src/**`, allows a 20s budget for cold transforms, and defaults `EXPO_PUBLIC_API_URL` when nothing else provides it.
+- `@gorhom/bottom-sheet` is mapped to `apps/mobile/test-support/bottom-sheet-stub.js`; the real module pulls `react-native-gesture-handler` into a renderer shim that React Native 0.86 no longer ships.
+- `@react-native/jest-preset` is deliberately **not** a direct dependency of `apps/mobile`. It is still installed as `jest-expo`'s peer. Making it a direct dependency split `react-native` into two store instances and broke `packages/ui-native` typechecking, because NativeWind's `className` augmentation only reaches the instance it was resolved against.
+- TanStack Query test clients use `gcTime: 0` and `staleTime: 0` so cache timers do not keep Jest alive.
 
 ### Payment state boundary
 
@@ -94,8 +114,15 @@
 - Booking-service tests cover database collision mapping and prove the RPC receives authenticated identity and quote id rather than a client total.
 - Existing product tests continue to enforce authorized sports, Shooting Machine ownership, durations, stale quote selection, and past-slot rules.
 - Payment schema tests cover booking-only order creation (no client amount), complete checkout verification input, and provider state enums.
-- Payment service tests cover server-side amount derivation, ownership refusal, non-pending refusal, provider-failure mapping, invalid signatures, captured-and-amount-matched confirmation, repeated verification idempotency, raw-body webhook signatures, webhook fail-closed configuration, unknown-order acknowledgement, and paid-order downgrade protection.
-- API route tests cover payment-order auth requirements and the webhook staying outside customer authentication.
+- Payment service tests cover server-side amount derivation, ownership refusal, non-pending refusal, provider-failure mapping, invalid signatures, captured-and-amount-matched confirmation, repeated verification idempotency, raw-body webhook signatures, webhook fail-closed configuration, unknown-order acknowledgement, paid-order downgrade protection, order/payment id mismatch, a payment that is not captured, a failed webhook event, a duplicate captured webhook, and a webhook arriving after the callback without a downgrade or a second payment row.
+- API route tests cover payment-order auth requirements, verify and key-route auth requirements, and the webhook staying outside customer authentication.
+- `apps/api/src/security.test.ts` scans every web and mobile source file for `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY`, requires the client env files to expose only `EXPO_PUBLIC_`/`NEXT_PUBLIC_` values, and requires each privileged name to stay an empty placeholder in `apps/api/.env.example`.
+- Mobile component tests cover the boundaries that only the screen can show:
+  - Booking Detail offers **Pay Now** on a `pending` booking and hides it once the booking is `confirmed`.
+  - Payment shows the server total, sends only the booking id to create an order, and posts the raw checkout result to verification rather than confirming itself.
+  - A cancelled checkout calls neither verification nor navigation, leaves the booking alone, and offers the outstanding order again.
+  - A failed payment-status read shows the unavailable state and recovers through **Retry**.
+  - A booking the server already confirmed offers no pay action and creates no order.
 - Run final gates on Node 22:
 
 ```bash
@@ -106,6 +133,10 @@ pnpm test
 pnpm build
 git diff --check
 ```
+
+All six pass on this checkpoint. `pnpm test` runs Vitest for the packages and the API (38 API tests) and Jest for `apps/mobile` (6 component tests across 2 suites).
+
+`pnpm format:check` still fails on 35 files, and it failed the same way before this checkpoint: the repository was never formatted. Every file it flags other than the three touched here was already failing at the starting HEAD, and every file added in this checkpoint is Prettier-clean. Do not run a repository-wide reformat as part of this branch; treat it as its own change.
 
 Native Android/iOS builds were not run.
 
@@ -173,10 +204,20 @@ Use a development build on an emulator/device that can reach `EXPO_PUBLIC_API_UR
 - The webhook endpoint must be registered in the Razorpay dashboard with `RAZORPAY_WEBHOOK_SECRET`; webhook delivery itself cannot be exercised locally without a tunnel.
 - `expired` payment-order status is modeled but never set; there is no order-expiry job yet.
 - Refunds are out of scope; the `refunded` status only appears if the provider reports it.
+- Refund webhook events are not applied to orders that are already `paid`. Changing that is a product decision about whether a refund downgrades a booking, not a defect to fix silently. Record it in `docs/DECISIONS.md` before Phase 5 touches it.
+- Two native blockers stop `expo export` / Metro from producing a bundle today. Neither was fixed on this branch because both are install and dependency-realignment work, not payment work:
+  - `.npmrc` declares `node-linker=hoisted`, but the working install is isolated, so `node_modules/.pnpm/node_modules` holds the hoisted copies and Metro's `nodeModulesPaths` does not look there. Resolve the linker mismatch deliberately; it changes every `node_modules` layout in the repo.
+  - `react-native-gesture-handler@~2.28.0` imports `react-native/Libraries/Renderer/shims/ReactNative`, which `react-native@0.86.0` removed.
+- `expo/bundledNativeModules.json` for SDK 57.0.26 disagrees with several pinned native ranges (`react-native-gesture-handler` wants `~2.32.0`, plus `react-native-reanimated`, `react-native-worklets`, `react-native-screens`, `react-native-safe-area-context`, and `react-native-svg`). Realign with `expo install` in one change with a device smoke test before the first development build.
+- `react-native-razorpay` is a native module, so Razorpay checkout does not run under Expo Go. `npx expo prebuild` plus a development build is required, and iOS also needs `LSApplicationQueriesSchemes` for UPI. The component tests mock checkout and assert only the behaviour around it.
+- `pnpm peers check` reports three items: `react-native-reanimated@4.1.7` wanting React Native 0.78–0.82 and `expo-modules-core` wanting a newer `react-native-worklets` (both pre-existing), plus `@react-native/jest-preset` 0.86.3 against `react-native@0.86.0`'s exact optional peer `0.86.0`, which is unavoidable while `jest-expo` wants `^0.86.3` and React Native wants `0.86.0`.
+- `apps/api/openapi/openapi.yaml` still stops at the booking endpoints. Profile endpoints from an earlier phase and all four payment endpoints are missing. The contract needs a dedicated pass; it was not extended here.
 
 ## Exact next phase
 
 Phase 5 is booking fulfillment beyond payment: enforce capture settings deliberately (decide auto-capture vs manual capture as a recorded decision), then build the customer pass/QR for confirmed bookings. Payment refunds, cancellation policy, and staff-facing payment views require explicit product decisions first. Do not merge into `main` without an explicit request.
+
+Before any of that can be verified on a device, the two native blockers listed under known gaps have to be cleared: settle the pnpm linker mismatch, then realign the Expo SDK native ranges with `expo install`. That is build work, not product work, and it should land as its own change so a regression is attributable. Do not claim Expo Go support; this app needs a development build.
 
 ## Multi-device recovery
 
