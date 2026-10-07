@@ -13,9 +13,10 @@ e844c68 test(mobile): add jest-expo component test runner
 16ccbb4 test(mobile): cover Pay visibility on Booking Detail
 20c757d test(api): close payment auth, idempotency and secret-boundary gaps
 cbe044c docs(phase4): record the mobile test runner and the SDK drift found with it
+704d845 docs(phase4): final Phase 4 handoff checkpoint
 ```
 
-- Latest local HEAD: this file is updated in the final commit of the checkpoint. Run `git rev-parse HEAD` after pushing; it must equal `git rev-parse origin/feature/customer-mobile-payments`.
+- After `704d845`, only documentation follow-up to this file follows on the branch. Run `git log --oneline 150fd0e..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match.
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
@@ -136,7 +137,7 @@ git diff --check
 
 All six pass on this checkpoint. `pnpm test` runs Vitest for the packages and the API (38 API tests) and Jest for `apps/mobile` (6 component tests across 2 suites).
 
-`pnpm format:check` still fails on 35 files, and it failed the same way before this checkpoint: the repository was never formatted. Every file it flags other than the three touched here was already failing at the starting HEAD, and every file added in this checkpoint is Prettier-clean. Do not run a repository-wide reformat as part of this branch; treat it as its own change.
+`pnpm format:check` still fails on 35 files, and every one of them was already failing at the starting HEAD: the repository was never formatted. Five flagged files were touched on this branch (`apps/api/src/app.test.ts`, `apps/api/src/services/payment.test.ts`, `apps/mobile/src/screens/customer/PaymentScreen.tsx`, `docs/PACKAGE_POLICY.md`, `docs/TESTING_STRATEGY.md`) and all five were flagged before the edits too. Every file added in this checkpoint is Prettier-clean. Do not run a repository-wide reformat as part of this branch; treat it as its own change.
 
 Native Android/iOS builds were not run.
 
