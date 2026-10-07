@@ -18,7 +18,14 @@ cbe044c docs(phase4): record the mobile test runner and the SDK drift found with
 0ae66e4 docs(phase4): pin the format-check count and the checkpoint commit chain
 ```
 
-- The native/device-readiness checkpoint starts at `0ae66e43b226128442afb8bfbb6a8e9522e408cd`. Its commit chain is pinned at the bottom of this file. Run `git log --oneline 0ae66e4..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match.
+- Commits added by the native/device-readiness checkpoint, oldest first:
+
+```text
+914dbb6 chore(mobile): complete Android payment readiness
+a22e99c docs: record Android payment readiness and the device smoke checklist
+```
+
+- The native/device-readiness checkpoint starts at `0ae66e43b226128442afb8bfbb6a8e9522e408cd`. Run `git log --oneline 0ae66e4..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match. The chain block above lists the checkpoint's code and documentation commits by hash; the final `docs:` commit that pins this block records itself by message only, because a file cannot contain its own commit hash. `git rev-parse HEAD` is authoritative for the tip.
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
