@@ -51,6 +51,34 @@ describe('api foundation', () => {
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
 
+  it('requires authentication for reading a booking payment order', async () => {
+    const response = await request(app).get(
+      '/api/v1/payments/orders/booking/5c4a7b82-a8a0-4ef9-8c98-68eb36f63f66',
+    );
+    expect(response.status).toBe(401);
+    expect(response.body.data).toBeNull();
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('requires authentication for payment verification', async () => {
+    const response = await request(app)
+      .post('/api/v1/payments/verify')
+      .send({
+        providerOrderId: 'order_abc',
+        providerPaymentId: 'pay_abc',
+        signature: 'signature',
+      });
+    expect(response.status).toBe(401);
+    expect(response.body.data).toBeNull();
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('keeps the public Razorpay key id behind a customer session', async () => {
+    const response = await request(app).get('/api/v1/payments/razorpay/key');
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
   it('rejects a Razorpay webhook that carries no provider signature', async () => {
     const response = await request(app)
       .post('/api/v1/payments/webhook/razorpay')

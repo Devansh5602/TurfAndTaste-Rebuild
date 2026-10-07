@@ -241,6 +241,50 @@ describe('PaymentService.verifyPayment', () => {
     expect(payment).toMatchObject({ status: 'captured', providerPaymentId });
   });
 
+  it('rejects a checkout result whose payment belongs to a different order', async () => {
+    paymentsFetchMock.mockResolvedValue({
+      id: providerPaymentId,
+      order_id: 'order_someone_else',
+      status: 'captured',
+      amount: 50000,
+      currency: 'INR',
+    });
+    const { supabase, calls } = createSupabaseMock({});
+    const service = new PaymentService(supabase, env);
+
+    await expect(
+      service.verifyPayment(
+        providerOrderId,
+        providerPaymentId,
+        checkoutSignature(providerPaymentId, providerOrderId),
+        'customer-1',
+      ),
+    ).rejects.toMatchObject({ status: 400, code: 'ORDER_MISMATCH' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('never confirms a booking for a payment the provider has not captured', async () => {
+    paymentsFetchMock.mockResolvedValue({
+      id: providerPaymentId,
+      order_id: providerOrderId,
+      status: 'authorized',
+      amount: 50000,
+      currency: 'INR',
+    });
+    const { supabase, calls } = createSupabaseMock({});
+    const service = new PaymentService(supabase, env);
+
+    await expect(
+      service.verifyPayment(
+        providerOrderId,
+        providerPaymentId,
+        checkoutSignature(providerPaymentId, providerOrderId),
+        'customer-1',
+      ),
+    ).rejects.toMatchObject({ status: 400, code: 'PAYMENT_NOT_CAPTURED' });
+    expect(calls.filter((call) => call.table === 'bookings')).toHaveLength(0);
+  });
+
   it('rejects a captured payment whose amount differs from the booking quote', async () => {
     paymentsFetchMock.mockResolvedValue({
       id: providerPaymentId,
@@ -380,6 +424,103 @@ describe('PaymentService.handleWebhook', () => {
       service.handleWebhook(rawBody, webhookSignature(rawBody)),
     ).resolves.toBeUndefined();
     expect(calls.filter((call) => call.op !== undefined)).toHaveLength(0);
+  });
+
+  it('does not confirm a booking when the provider reports a failed payment', async () => {
+    const rawBody = Buffer.from(JSON.stringify(webhookPayload('failed')));
+    const { supabase, calls } = createSupabaseMock({
+      payment_orders: [ok(paymentOrderRow()), ok(null)],
+      payments: [
+        ok(null),
+        ok({
+          id: 'payment-1',
+          payment_order_id: 'payment-order-1',
+          provider_payment_id: providerPaymentId,
+          status: 'failed',
+          verified_at: '2026-10-07T10:06:00.000Z',
+          created_at: '2026-10-07T10:06:00.000Z',
+        }),
+      ],
+    });
+    const service = new PaymentService(supabase, env);
+
+    await service.handleWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(calls).toContainEqual({
+      table: 'payment_orders',
+      op: 'update',
+      payload: { status: 'failed' },
+    });
+    expect(calls.filter((call) => call.table === 'bookings')).toHaveLength(0);
+  });
+
+  it('applies a repeated captured webhook without creating a second payment', async () => {
+    const rawBody = Buffer.from(JSON.stringify(webhookPayload('captured')));
+    const recordedPayment = {
+      id: 'payment-1',
+      payment_order_id: 'payment-order-1',
+      provider_payment_id: providerPaymentId,
+      status: 'captured',
+      verified_at: '2026-10-07T10:05:00.000Z',
+      created_at: '2026-10-07T10:05:00.000Z',
+    };
+    const { supabase, calls } = createSupabaseMock({
+      payment_orders: [
+        ok(paymentOrderRow()),
+        ok(null),
+        ok(paymentOrderRow({ status: 'paid' })),
+        ok(null),
+      ],
+      payments: [ok(null), ok(recordedPayment), ok(recordedPayment), ok(recordedPayment)],
+      bookings: [ok(null), ok(null)],
+    });
+    const service = new PaymentService(supabase, env);
+
+    await service.handleWebhook(rawBody, webhookSignature(rawBody));
+    await service.handleWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(calls.filter((call) => call.table === 'payments' && call.op === 'insert')).toHaveLength(
+      1,
+    );
+    expect(calls).toContainEqual({
+      table: 'payment_orders',
+      op: 'update',
+      payload: { status: 'paid' },
+    });
+  });
+
+  it('keeps the confirmed booking intact when the webhook follows the callback', async () => {
+    const rawBody = Buffer.from(JSON.stringify(webhookPayload('captured')));
+    const recordedPayment = {
+      id: 'payment-1',
+      payment_order_id: 'payment-order-1',
+      provider_payment_id: providerPaymentId,
+      status: 'captured',
+      verified_at: '2026-10-07T10:05:00.000Z',
+      created_at: '2026-10-07T10:05:00.000Z',
+    };
+    const { supabase, calls } = createSupabaseMock({
+      payment_orders: [ok(paymentOrderRow({ status: 'paid' })), ok(null)],
+      payments: [ok(recordedPayment), ok(recordedPayment)],
+      bookings: [ok(null)],
+    });
+    const service = new PaymentService(supabase, env);
+
+    await service.handleWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(calls).toContainEqual({
+      table: 'payment_orders',
+      op: 'update',
+      payload: { status: 'paid' },
+    });
+    expect(calls.filter((call) => call.table === 'payments' && call.op === 'insert')).toHaveLength(
+      0,
+    );
+    expect(calls).toContainEqual({
+      table: 'bookings',
+      op: 'update',
+      payload: expect.objectContaining({ status: 'confirmed' }),
+    });
   });
 
   it('fails closed when no webhook secret is configured', async () => {
