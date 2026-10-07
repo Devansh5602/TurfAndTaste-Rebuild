@@ -98,6 +98,10 @@ export function PaymentScreen() {
 
   const paymentOrder = paymentOrderQuery.data ?? null;
   const paymentOrderStatus = paymentOrder?.status ?? 'none';
+  const booking = bookingQuery.data ?? null;
+  // The server owns the booking state; the screen only mirrors it.
+  const bookingIsPayable = booking?.status === 'pending';
+  const bookingIsConfirmed = booking?.status === 'confirmed';
 
   const createOrderMutation = useMutation({
     mutationFn: () => withAuth((url, token) => createPaymentOrder(url, token, bookingId)),
@@ -137,6 +141,9 @@ export function PaymentScreen() {
 
 
   const handleStartPayment = () => {
+    if (!bookingIsPayable) {
+      return;
+    }
     if (!keyQuery.data) {
       Alert.alert('Payment Not Configured', 'Razorpay is not configured. Please contact support.');
       return;
@@ -202,7 +209,6 @@ export function PaymentScreen() {
       });
   };
 
-  const booking = bookingQuery.data ?? null;
   const badge = ORDER_STATUS_BADGE[paymentOrderStatus];
 
   const amountLabel = useMemo(() => {
@@ -304,7 +310,7 @@ export function PaymentScreen() {
           <Card>
             <LoadingState label="Processing payment..." />
           </Card>
-        ) : paymentOrderStatus === 'paid' ? (
+        ) : paymentOrderStatus === 'paid' || bookingIsConfirmed ? (
           <Card>
             <View className="gap-3">
               <Text className="text-center text-body text-text-secondary">
@@ -317,7 +323,7 @@ export function PaymentScreen() {
               />
             </View>
           </Card>
-        ) : (
+        ) : bookingIsPayable ? (
           <Card>
             <View className="gap-3">
               <Text className="text-center text-body text-text-secondary">
@@ -329,6 +335,19 @@ export function PaymentScreen() {
                 label={paymentOrderStatus === 'created' ? 'Proceed to Payment' : 'Pay Now'}
                 onPress={handleStartPayment}
                 disabled={isBusy || !keyQuery.data}
+              />
+            </View>
+          </Card>
+        ) : (
+          <Card>
+            <View className="gap-3">
+              <Text className="text-center text-body text-text-secondary">
+                This booking is no longer open for payment.
+              </Text>
+              <Button
+                variant="outline"
+                label="Back to Booking"
+                onPress={() => navigation.replace('BookingDetail', { bookingId })}
               />
             </View>
           </Card>
