@@ -1,0 +1,51 @@
+# Turf & Taste Rebuild — Vercel API deployment
+
+# Git / IDE / local tooling
+.git
+.github
+.vscode
+.cursor
+.vercel
+
+# Dependencies and caches
+node_modules
+**/node_modules
+.pnpm-store
+.turbo
+**/.turbo
+coverage
+**/coverage
+
+# Build outputs
+dist
+**/dist
+.next
+**/.next
+out
+**/out
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Mobile app — exclude entirely from API deployment
+apps/mobile
+
+# Web app — exclude entirely from API deployment
+apps/web
+
+# Environment / secret material
+.env
+.env.*
+.env.keys
+**/.env
+**/.env.*
+**/.env.keys
+
+# Logs / OS files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Supabase local artifacts only
+supabase/.temp/

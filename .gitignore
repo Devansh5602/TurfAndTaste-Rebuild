@@ -35,3 +35,6 @@ pnpm-debug.log*
 
 # Supabase CLI local artifacts
 supabase/.temp/
+
+# Vercel local environment file
+.env.local
