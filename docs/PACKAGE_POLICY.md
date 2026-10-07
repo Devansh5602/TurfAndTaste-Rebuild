@@ -33,6 +33,7 @@ One library per job. Date handling is date-fns and date-fns-tz. HTTP from the ap
 | React Native Safe Area, Screens, Gesture Handler, Reanimated | Native shell | mobile | Required by navigation and sheets | custom implementations |
 | AsyncStorage | Non-secret persistence | mobile | Theme preference | SecureStore for theme |
 | expo-secure-store | Future secrets | mobile | Keychain / keystore | AsyncStorage for tokens |
+| expo-splash-screen | Native splash | mobile | SDK 57's supported way to set the splash image and colour | the root `splash` key, removed from the SDK 57 config schema |
 | @expo-google-fonts/plus-jakarta-sans | Mobile font | mobile | Same face as web | bundled custom font files |
 | Helmet | Headers | api | Standard Express headers | hand-rolled header list |
 | cors | CORS | api | Explicit origin callback | wildcard reflection |
@@ -52,7 +53,11 @@ Licenses for these packages are permissive (MIT, Apache-2.0, or ISC) at the vers
 
 Native module versions are aligned with Expo SDK 57. Change them with `expo install`, not by guessing a React Native version.
 
-Phase 4 verification found drift against `expo/bundledNativeModules.json`: `react-native-gesture-handler` is on `~2.28.0` where SDK 57 bundles `~2.32.0`, and `react-native-reanimated`, `react-native-worklets`, `react-native-screens`, and `react-native-svg` are also behind. Realign them with `expo install` before the first device build, in one change, with a device smoke test.
+`npx expo-doctor` passes 21/21 and `npx expo install --check` reports no SDK-recommended native version left behind after the native-readiness checkpoint on 2026-10-07. That checkpoint realigned, in one change: `expo` to `57.0.27`, `expo-dev-client`, `expo-font`, `expo-linking`, `expo-secure-store`, `expo-status-bar`, `react-native` to `0.86.3`, `react-native-gesture-handler` to `~2.32.0`, `react-native-reanimated` to `4.5.1`, `react-native-worklets` to `0.10.1`, `react-native-screens` to `~4.26.0`, `react-native-safe-area-context` to `~5.7.0`, `react-native-svg` to `15.15.4`, plus `expo-splash-screen`. Re-check the drift with `npx expo install --check` whenever `expo` itself moves.
+
+One deliberate deviation remains: Expo recommends `typescript@~6.0.3` for SDK 57, but TypeScript 6.0.3 drops the `@types/jest` globals `apps/mobile` needs and `pnpm --filter @turf-and-taste/mobile typecheck` fails on it. The repo stays on TypeScript 5.9.3 from the catalog and `apps/mobile/package.json` declares `expo.install.exclude: ["typescript"]` so the deviation is explicit instead of reappearing as an unexplained doctor failure. TypeScript does not participate in Metro, prebuild, or Gradle.
+
+pnpm 12 reads project settings from `pnpm-workspace.yaml`, not `.npmrc`. `nodeLinker: hoisted` lives there and is authoritative; the values in `.npmrc` are kept only for older pnpm and are ignored by 12.8.1. Metro resolves from the workspace-root `node_modules`, so the install must stay hoisted. After switching an existing checkout to this layout, if a workspace script fails with a stale `node_modules/.pnpm/...` path in `node_modules/.bin`, run `rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install`.
 
 `apps/mobile` must not take `@react-native/jest-preset` as a direct dependency. See ADR 013.
 

@@ -16,7 +16,7 @@ Never commit real keys. Templates:
 
 Public values can include the API base URL, the Supabase project URL, and the Supabase anon or publishable key.
 
-Server-only values include `SUPABASE_SERVICE_ROLE_KEY`, `RAZORPAY_KEY_SECRET`, and any future webhook secret.
+Server-only values include `SUPABASE_SERVICE_ROLE_KEY`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET`. The webhook secret is used only by the API process to verify `POST /api/v1/payments/webhook/razorpay`; it must never reach a client bundle, a log, or this repository.
 
 ## Local
 
@@ -31,7 +31,7 @@ Default local URLs:
 
 | Name | Web | API | Mobile | Data |
 | --- | --- | --- | --- | --- |
-| local | `next dev` | `tsx watch` | Expo dev client | not migrated in Phase 0 |
+| local | `next dev` | `tsx watch` | Expo dev client | all migrations applied through the linked workflow |
 | development | Vercel development env, later | hosted dev process, later | internal dev client | Supabase dev |
 | preview / staging | Vercel preview | matching API preview | preview APK | Supabase preview or staging |
 | production | Vercel production | production Node process | Play AAB | production Supabase |

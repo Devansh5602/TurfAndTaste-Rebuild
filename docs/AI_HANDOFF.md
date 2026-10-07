@@ -5,7 +5,8 @@
 - Branch: `feature/customer-mobile-payments`
 - Starting `develop` HEAD: `0f5332d7ba287e57fae2bec131eff97ff57708c8`
 - HEAD when this checkpoint opened: `150fd0eaa3f494cfef6fd83d7de7075ca24f4920`
-- Commits added by this checkpoint, oldest first:
+- HEAD when the Phase 4 payment checkpoint opened: `0ae66e43b226128442afb8bfbb6a8e9522e408cd`
+- Commits added by the Phase 4 payment checkpoint, oldest first:
 
 ```text
 e844c68 test(mobile): add jest-expo component test runner
@@ -14,9 +15,10 @@ e844c68 test(mobile): add jest-expo component test runner
 20c757d test(api): close payment auth, idempotency and secret-boundary gaps
 cbe044c docs(phase4): record the mobile test runner and the SDK drift found with it
 704d845 docs(phase4): final Phase 4 handoff checkpoint
+0ae66e4 docs(phase4): pin the format-check count and the checkpoint commit chain
 ```
 
-- After `704d845`, only documentation follow-up to this file follows on the branch. Run `git log --oneline 150fd0e..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match.
+- The native/device-readiness checkpoint starts at `0ae66e43b226128442afb8bfbb6a8e9522e408cd`. Its commit chain is pinned at the bottom of this file. Run `git log --oneline 0ae66e4..HEAD` for the exact chain, and `git rev-parse HEAD` against `git rev-parse origin/feature/customer-mobile-payments` after pushing; the two must match.
 - Runtime: Node.js 22 (`.node-version` is `22`; package engine is `>=22.13.0`)
 - Target PR branch: `develop`; do not merge to `main`
 
@@ -139,17 +141,180 @@ All six pass on this checkpoint. `pnpm test` runs Vitest for the packages and th
 
 `pnpm format:check` still fails on 35 files, and every one of them was already failing at the starting HEAD: the repository was never formatted. Five flagged files were touched on this branch (`apps/api/src/app.test.ts`, `apps/api/src/services/payment.test.ts`, `apps/mobile/src/screens/customer/PaymentScreen.tsx`, `docs/PACKAGE_POLICY.md`, `docs/TESTING_STRATEGY.md`) and all five were flagged before the edits too. Every file added in this checkpoint is Prettier-clean. Do not run a repository-wide reformat as part of this branch; treat it as its own change.
 
-Native Android/iOS builds were not run.
+Native Android/iOS builds are covered in **Native and device readiness** below. iOS was not run.
+
+## Native and device readiness
+
+Build work performed on top of the Phase 4 payment checkpoint. This is not Phase 5. Starting HEAD
+`0ae66e43b226128442afb8bfbb6a8e9522e408cd`.
+
+### Migration truth
+
+All four migrations are applied to the linked non-production project and local and remote histories
+match, confirmed read-only with `npx supabase migration list`. Nothing was pushed, reset, or
+rewritten. See **Migration status** above.
+
+### Native dependency and linker status
+
+- Root cause of the Metro failure: pnpm 12.8.1 reads project settings from `pnpm-workspace.yaml`,
+  so the `node-linker=hoisted` declared in `.npmrc` had never taken effect and every install was
+  isolated. `nodeLinker: hoisted` now lives in `pnpm-workspace.yaml` and is what pnpm reports back
+  (`pnpm config get node-linker` → `hoisted`). See ADR 014.
+- Under the isolated layout Metro's `nodeModulesPaths` could not reach
+  `node_modules/.pnpm/node_modules`, and `expo export --platform android` failed with
+  `Unable to resolve module hoist-non-react-statics` out of `react-native-gesture-handler`.
+- `react-native-gesture-handler@2.28.0` imported
+  `react-native/Libraries/Renderer/shims/ReactNative`, a file React Native 0.86 removed.
+  `~2.32.0` no longer does.
+- `pnpm install --frozen-lockfile` passes on the final tree. `node-linker` does not change
+  `pnpm-lock.yaml`; the lockfile diff is only the version realignment.
+- Switching an existing checkout to this layout can leave stale `node_modules/.bin` shims pointing
+  at `.pnpm` paths that no longer exist, which surfaces as
+  `Cannot find module '.../node_modules/.pnpm/.../bin/tsc'`. Fix with
+  `rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install`. A fresh clone
+  does not hit this.
+
+### Expo compatibility status
+
+- `npx expo-doctor`: **21/21 checks passed** (was 16/21 with 5 failures at the starting HEAD).
+- `npx expo install --check`: **Dependencies are up to date**.
+- Realigned in one change with `expo install --fix`, not by hand: `expo` `57.0.27`,
+  `expo-dev-client` `57.0.19`, `expo-font` `57.0.4`, `expo-linking` `57.0.12`,
+  `expo-secure-store` `57.0.4`, `expo-status-bar` `57.0.1`, `react-native` `0.86.3`,
+  `react-native-gesture-handler` `~2.32.0`, `react-native-reanimated` `4.5.1`,
+  `react-native-worklets` `0.10.1`, `react-native-screens` `~4.26.2`,
+  `react-native-safe-area-context` `~5.7.0`, `react-native-svg` `15.15.4`.
+- Added `expo-splash-screen@57.0.9` and moved the splash into its config plugin. The SDK 57 schema
+  rejects the root `splash` key, and prebuild had been silently ignoring it: the generated native
+  project shipped Expo's default splash artwork on `#FFFFFF` instead of the app's `./assets/splash.png`
+  on `#F7F3EB`. Regenerated resources now use the app's asset and colour. The removed
+  `newArchEnabled` key was dropped as well; SDK 57 has no such option.
+- Dropped the `resolver.disableHierarchicalLookup = true` override from `metro.config.js`, which
+  expo-doctor flagged as a mismatch against `expo/metro-config`.
+- `react-native` was **not** moved to Expo's recommended `typescript@~6.0.3`; see ADR 014 for why.
+
+### Prebuild result
+
+- `android/` and `ios/` did not exist before this checkpoint and are gitignored as generated
+  output; nothing hand-maintained was destroyed and no committed native tree was overwritten.
+- `npx expo prebuild --platform android --no-install` exits **0**, both on the untouched starting
+  tree and after the config changes.
+- One non-blocking advisory remains: `android: userInterfaceStyle: Install expo-system-ui in your
+project to enable this feature.` (pre-existing, `userInterfaceStyle: automatic` is set without
+  `expo-system-ui` installed).
+- Generated `android/app/build.gradle` calls `autolinkLibrariesWithApp()` and `settings.gradle`
+  wires `expoAutolinking.rnConfigCommand` plus `expoAutolinking.useExpoModules()`.
+- The `android/` directory is regenerated output and must not be committed.
+
+### Metro / bundling result
+
+`npx expo export --platform android` succeeds: **2014 modules bundled**, 31 assets, and a 5.5 MB
+Hermes `.hbc` bytecode file. It previously failed outright. This is the strongest evidence that the
+linker and version alignment are correct, independent of Gradle.
+
+### Android build result
+
+- Toolchain: JDK 21 (`JAVA_HOME` exported), Android SDK with platforms `android-35`/`android-36`,
+  Gradle `9.3.1` from the wrapper, `ANDROID_HOME`/`ANDROID_SDK_ROOT` exported for the session.
+  AGP auto-downloaded `build-tools;36.0.0` and NDK `27.1.12297006` on the first run with the
+  SDK licenses already accepted.
+- Command: `cd apps/mobile/android && ./gradlew assembleDebug`
+- Result: **`BUILD SUCCESSFUL in 16m 25s`**, exit code 0, 728 actionable tasks (295 executed,
+  433 up-to-date). No failures, no retries.
+- Artifact: `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+  — 260,547,319 bytes, `variantName: "debug"`, `applicationId: in.turfandtaste.app`,
+  `versionName 0.0.0`, `versionCode 1`, `minSdkVersionForDexing 24`.
+- Signing is the standard Expo/React Native `debug.keystore` (`androiddebugkey`). **No production
+  signing was configured**, no `.jks`/release keystore exists in the repository, and no live
+  Razorpay credential was used. The `release` block in the generated `build.gradle` still falls
+  back to `debug.keystore` — that is the untouched Expo prebuild template default and must be
+  replaced with real release signing before any release artifact is produced, which is not this
+  checkpoint's work.
+- `android/` remains gitignored and untracked (0 tracked files). Only the APK _result_ is
+  recorded here; the artifact itself must not be committed.
+- Non-blocking build noise: Kotlin/Java/C++ deprecation warnings from
+  `react-native-gesture-handler`, `expo-modules-core`, and React Native itself, a
+  "Deprecated Gradle features ... incompatible with Gradle 10" notice, and
+  `w: Detected multiple Kotlin daemon sessions`. None failed the build.
+
+### Razorpay native integration status
+
+- `react-native-razorpay@3.0.0` is installed in `apps/mobile` with `@types/react-native-razorpay`.
+- Autolinking finds it: it appears in `expo-modules-autolinking react-native-config` output with
+  its `react-native-razorpay.podspec`, and Gradle compiles `:react-native-razorpay:compileDebugJavaWithJavac`
+  and `:react-native-razorpay:extractDebugAnnotations` during `assembleDebug`. Its Android manifest
+  (`com.razorpay.rn`, declaring `com.razorpay.CheckoutActivity`) is picked up.
+- Client side uses only the public key id from `GET /api/v1/payments/razorpay/key`. The key id is
+  not even hardcoded in the bundle — it is fetched at runtime.
+- Checkout is launched with `key`, `currency`, `amount: order.amountPaise`, and
+  `order_id: order.providerOrderId`, all of which come from the server-created order, never from
+  user input. The `onSuccess` handler only posts `razorpay_payment_id`, `razorpay_order_id`, and
+  `razorpay_signature` to `POST /api/v1/payments/verify`; there is no code path that marks payment
+  successful or booking confirmed locally.
+- Secret scan of the produced Android bundle: **0 matches** for `RAZORPAY_KEY_SECRET`,
+  `RAZORPAY_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `rzp_live`, `sk_test_`, and
+  `service_role`. `apps/mobile/.env` contains only `DOTENV_PUBLIC_KEY` and `EXPO_PUBLIC_*` values.
+  `apps/api/src/security.test.ts` enforces this as a gate.
+- TEST mode only. No live credential was used, added, or printed.
+- Checkout is native, so it does not run under Expo Go; a development build is required. iOS also
+  needs `LSApplicationQueriesSchemes` for UPI.
+
+### Webhook endpoint and configuration requirement
+
+- Endpoint: `POST /api/v1/payments/webhook/razorpay`, i.e. `/api/v1` + `/payments/webhook` +
+  `/razorpay`. Register `https://<api-host>/api/v1/payments/webhook/razorpay` once the API is
+  reachable over HTTPS. The real host is not written down anywhere and must not be invented.
+- `RAZORPAY_WEBHOOK_SECRET` is accepted by `apps/api/src/config/env.ts` and has an empty
+  placeholder at `apps/api/.env.example`. It never leaves the server.
+- Raw body: `express.json({ verify })` stores the untouched bytes on `req.rawBody` before any
+  parsing; the route HMAC-SHA256s those bytes with `timingSafeEqual`.
+- The route is mounted in `v1.ts` before `requireAuth` / `requireDomain('customer')`, so Razorpay
+  can call it with no customer session.
+- Dashboard events to subscribe to in test mode: `payment.captured`, `payment.failed`,
+  `payment.refunded`, with a secret equal to the API's `RAZORPAY_WEBHOOK_SECRET`.
+- Without a tunnel, the webhook rows of `docs/DEVICE_SMOKE_CHECKLIST.md` can still be exercised
+  with a hand-computed `x-razorpay-signature` over an exact body.
+
+### Capture-setting requirement
+
+The code creates orders **without** `payment_capture`, and the verify path requires
+`payment.status === 'captured'`. So the account must be on **automatic capture**. Verify in the
+Razorpay dashboard, in **test mode**, under **Settings → Configuration → Auto capture**, and
+confirm operationally that one TEST payment reports `captured` rather than `authorized`. This
+checkpoint did not change merchant/account behaviour. Whether capture stays automatic is a Phase 5
+decision that must be recorded in `docs/DECISIONS.md` first.
+
+### Remaining manual device checks
+
+`docs/DEVICE_SMOKE_CHECKLIST.md` — AUTH A1–A8, DISCOVERY D1–D4, BOOKING B1–B11, PAYMENT P1–P14,
+WEBHOOK W1–W11, SECURITY S1–S8. Nothing in it has been executed on a device yet; the automated
+suite covers the same boundaries at the API and component level.
 
 ## Migration status
 
-The hosted database already contained the three Phase 1 migrations. The Supabase CLI linked-project dry run identified exactly one pending migration:
+**Synchronized. There are no pending migrations.** This section previously said the Phase 3
+migration was pending; that was stale and has been corrected by direct remote history inspection
+on 2026-10-07.
 
-```text
-20261006183000_booking_integrity.sql
+Read-only check, no `db push` and no writes:
+
+```bash
+npx supabase migration list
 ```
 
-This migration must be applied to the linked non-production Supabase project before end-to-end manual booking tests. Do not reset the database. Review the dry run, then use the established linked-project migration workflow.
+Returns, for the linked project `rlmuxztkwpwutyepttfe`, local and remote copies of all four
+migrations with no null on either side:
+
+```text
+20250101000000  local == remote
+20250101000001  local == remote
+20250101000002  local == remote
+20261006183000  local == remote   (booking_integrity, applied 2026-10-06 18:30:00)
+```
+
+Local `supabase/migrations/` holds exactly those four files. Nothing was pushed, reset, or
+rewritten in this checkpoint. Application startup still does not apply migrations; keep using the
+linked-project workflow for future migration files.
 
 ## Manual testing commands
 
@@ -172,53 +337,66 @@ Use a development build on an emulator/device that can reach `EXPO_PUBLIC_API_UR
 
 ## Manual smoke checklist
 
-1. Sign in with a real customer account.
-2. Open one of the four authorized facilities.
-3. Tap **Start booking**.
-4. Choose a future date.
-5. Choose a duration offered by backend pricing.
-6. Verify real available slots load; closed/past/conflicting slots do not appear.
-7. Verify Shooting Machine appears only for Cricket Green Net Practice.
-8. Select a slot and request the server quote.
-9. Review the server total and expiry; change an input and verify the quote clears.
-10. Create the booking and confirm status is **Awaiting payment**.
-11. Open My Bookings and verify the booking appears; open its detail.
-12. Refresh and restart the app; verify the authenticated session and booking history reload.
-13. In a second customer session, verify the first customer's booking is inaccessible.
-14. Attempt the same slot concurrently and verify one request receives the friendly conflict response.
-15. On a `pending` booking, tap **Pay Now** and confirm the Payment screen shows the server total, reference, and test-mode notice.
-16. Create a payment order; confirm the amount shown equals the booking's server total and no duplicate order is created when returning to the screen.
-17. Complete Razorpay test checkout with a test method; confirm the booking flips to **confirmed** only after verification and Booking Detail reflects it.
-18. Cancel checkout; confirm a friendly cancel alert and that the booking remains `pending`.
-19. Kill and restart the app; confirm the paid booking reloads as confirmed and the Payment screen shows the paid state.
-20. Retry verification after a network interruption; confirm no duplicate payment error surfaces.
+The full checklist lives in `docs/DEVICE_SMOKE_CHECKLIST.md`. It is organised as AUTH (A1–A8),
+DISCOVERY (D1–D4), BOOKING (B1–B11), PAYMENT (P1–P14), WEBHOOK (W1–W11), and SECURITY (S1–S8),
+with the prerequisites, the exact webhook dashboard configuration, and a signed-curl method for
+exercising the webhook without a tunnel.
+
+The shortest path that answers "can this device take a TEST payment" is A1, A4, D1, D3, B1, B5,
+B8, P1, P4, P5, P7, P10, P12, and S1. The webhook rows need either a tunnel or the signed-curl
+method; they cannot be reached from the app alone.
 
 ## Known gaps
 
-- The Phase 3 migration is committed but not automatically applied by application startup; it must be applied through the linked Supabase migration workflow.
+- Migrations are applied through the linked Supabase workflow, never by application startup. All four are currently synchronized (see **Migration status** above); a future migration file still has to be pushed manually.
 - Native device interaction and concurrent two-customer smoke tests remain manual checkpoint tasks.
 - Availability currently uses one-hour start increments because the domain durations are one and two hours; finer increments require an explicit product decision.
 - Open (`closed = false`) schedule overrides are not treated as expanded operating hours; closure overrides are authoritative and supported.
 - No pagination UI is needed yet; the API bounds My Bookings to 100 records.
 - Email verification/recovery deep-link completion remains a prior auth handoff gap and is not broadened here.
-- Razorpay orders are created without an explicit auto-capture setting, so capture behavior follows the dashboard's account-level default. A payment left `authorized` is not confirmed by the API; the webhook can still record `failed`/`refunded` outcomes. Confirm the test account's capture setting before end-to-end payment tests.
-- The webhook endpoint must be registered in the Razorpay dashboard with `RAZORPAY_WEBHOOK_SECRET`; webhook delivery itself cannot be exercised locally without a tunnel.
+- **Capture expectation: automatic capture.** `razorpay.orders.create` is called without a `payment_capture` option, so capture follows the merchant account's dashboard default, and the verify path hard-requires `payment.status === 'captured'` before any booking can become `confirmed`. A payment left `authorized` is rejected with `PAYMENT_NOT_CAPTURED`. Before end-to-end payment tests, open the Razorpay dashboard in **test mode** → **Settings** → **Configuration** → **Auto capture** and confirm it is enabled. Confirm it operationally too: after one TEST payment, `payments.fetch` for that id must report `captured`, not `authorized`. The API does not call `payments.capture`, and nothing in this checkpoint changed merchant/account behaviour. Deciding auto-capture vs manual capture as a deliberate product setting is Phase 5 and must be recorded in `docs/DECISIONS.md` first.
+- **Webhook configuration.** The endpoint is `POST /api/v1/payments/webhook/razorpay`, i.e. the public URL is `https://<api-host>/api/v1/payments/webhook/razorpay` once the API is reachable over HTTPS. `env.ts` accepts `RAZORPAY_WEBHOOK_SECRET`, `apps/api/.env.example` carries an empty placeholder for it, `express.json` preserves `req.rawBody`, and the route is mounted in `v1.ts` before `requireAuth`/`requireDomain('customer')`. Register it in the Razorpay dashboard in test mode with that URL, a secret equal to the API's `RAZORPAY_WEBHOOK_SECRET`, and events `payment.captured`, `payment.failed`, `payment.refunded`. Do not commit the URL's real host or the secret. `docs/DEVICE_SMOKE_CHECKLIST.md` gives both a tunnel-based and a tunnel-free signed-curl method.
 - `expired` payment-order status is modeled but never set; there is no order-expiry job yet.
 - Refunds are out of scope; the `refunded` status only appears if the provider reports it.
 - Refund webhook events are not applied to orders that are already `paid`. Changing that is a product decision about whether a refund downgrades a booking, not a defect to fix silently. Record it in `docs/DECISIONS.md` before Phase 5 touches it.
-- Two native blockers stop `expo export` / Metro from producing a bundle today. Neither was fixed on this branch because both are install and dependency-realignment work, not payment work:
-  - `.npmrc` declares `node-linker=hoisted`, but the working install is isolated, so `node_modules/.pnpm/node_modules` holds the hoisted copies and Metro's `nodeModulesPaths` does not look there. Resolve the linker mismatch deliberately; it changes every `node_modules` layout in the repo.
-  - `react-native-gesture-handler@~2.28.0` imports `react-native/Libraries/Renderer/shims/ReactNative`, which `react-native@0.86.0` removed.
-- `expo/bundledNativeModules.json` for SDK 57.0.26 disagrees with several pinned native ranges (`react-native-gesture-handler` wants `~2.32.0`, plus `react-native-reanimated`, `react-native-worklets`, `react-native-screens`, `react-native-safe-area-context`, and `react-native-svg`). Realign with `expo install` in one change with a device smoke test before the first development build.
-- `react-native-razorpay` is a native module, so Razorpay checkout does not run under Expo Go. `npx expo prebuild` plus a development build is required, and iOS also needs `LSApplicationQueriesSchemes` for UPI. The component tests mock checkout and assert only the behaviour around it.
-- `pnpm peers check` reports three items: `react-native-reanimated@4.1.7` wanting React Native 0.78–0.82 and `expo-modules-core` wanting a newer `react-native-worklets` (both pre-existing), plus `@react-native/jest-preset` 0.86.3 against `react-native@0.86.0`'s exact optional peer `0.86.0`, which is unavoidable while `jest-expo` wants `^0.86.3` and React Native wants `0.86.0`.
+- The two native blockers from the payment checkpoint are cleared. `nodeLinker: hoisted` now lives in `pnpm-workspace.yaml`, because pnpm 12 reads project settings from there and ignores `.npmrc`; and the mobile SDK ranges were realigned in one change with `expo install --fix`. Evidence: `expo export --platform android` bundles 2014 modules and emits Hermes bytecode where it previously failed on `hoist-non-react-statics`. See ADR 014.
+- `react-native-razorpay@3.0.0` is installed, appears in `expo-modules-autolinking react-native-config` output, is picked up by Android autolinking (`:react-native-razorpay:compileDebugJavaWithJavac` runs during `assembleDebug`), and reads only the public key id from `GET /api/v1/payments/razorpay/key`. No Razorpay secret exists anywhere in `apps/mobile`, enforced by `apps/api/src/security.test.ts`. It is a native module, so Razorpay checkout does not run under Expo Go; `npx expo prebuild` plus a development build is required, and iOS also needs `LSApplicationQueriesSchemes` for UPI. The component tests mock checkout and assert only the behaviour around it.
+- `pnpm peers check` now reports one item instead of three: `@react-native/metro-config` resolves to `0.87.1` while `@react-native/community-cli-plugin@0.86.3` names `0.86.3` as an exact optional peer. `react-native-worklets@0.10.1` declares `@react-native/metro-config: '*'` as a required peer, and `auto-install-peers` satisfies it with the newest match. This is a warning, not a failure — install, Metro export, and the Gradle build all succeed. If it ever matters, pin `@react-native/metro-config@0.86.3` as an `apps/mobile` devDependency. The three earlier items are gone: `react-native-reanimated@4.5.1`, `react-native-worklets@0.10.1`, and `react-native@0.86.3` each now satisfy the range that used to be violated.
+- `npx expo-doctor` passes 21/21 after the app.json schema fixes (removed `newArchEnabled` and the root `splash`, moved splash into the `expo-splash-screen` plugin) and the Metro config fix (dropped the `resolver.disableHierarchicalLookup` override). The only package Expo still disagrees with is `typescript`, excluded on purpose in `apps/mobile/package.json`.
+- **Machine-level Android requirement:** `ANDROID_HOME` and `ANDROID_SDK_ROOT` are usually not exported in a shell profile; export both and point them at your local Android SDK root before running any Gradle or `expo run:android` command, otherwise Gradle fails with "SDK location not found". The first build also downloads `build-tools;36.0.0` and NDK `27.1.12297006` through AGP's SDK auto-download, which needs accepted licenses under `<sdk>/licenses`. No SDK path belongs in this repository.
+- **No production signing exists.** Only the Expo template's `debug.keystore` is configured, for both debug and release variants. Producing a signed release/AAB is deliberately out of scope here and must be set up with a real keystore before any release artifact is made.
+- Prebuild still prints one advisory: `android: userInterfaceStyle: Install expo-system-ui in your project to enable this feature.` Non-blocking; `userInterfaceStyle: automatic` is declared without `expo-system-ui` installed. Not fixed here because it is unrelated to payments and adds a native module for no functional gain.
 - `apps/api/openapi/openapi.yaml` still stops at the booking endpoints. Profile endpoints from an earlier phase and all four payment endpoints are missing. The contract needs a dedicated pass; it was not extended here.
+
+## Known remaining warnings
+
+Classified so nobody has to rediscover them:
+
+| Warning                                                                  | Class                                 | Notes                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` fails on 35 files                                    | pre-existing                          | Every one already failed at the starting HEAD; the repository was never formatted. Do not mass-format on this branch.                                                                                                  |
+| `pnpm peers check` reports `@react-native/metro-config` 0.87.1 vs 0.86.3 | introduced by this task, non-blocking | `react-native-worklets@0.10.1` requires the peer at `*` and `auto-install-peers` takes the newest. Install, export, and Gradle all succeed. Pin `@react-native/metro-config@0.86.3` in `apps/mobile` if it ever bites. |
+| `expo-doctor` would flag `typescript` 5.9.3 vs `~6.0.3`                  | deliberate deviation                  | Declared via `expo.install.exclude`; see ADR 014. Doctor reports the exclusion explicitly.                                                                                                                             |
+| Gradle deprecation notices + `Detected multiple Kotlin daemon sessions`  | pre-existing, non-blocking            | From RN/gesture-handler/expo-modules-core against Gradle 9.3.1.                                                                                                                                                        |
+| `expo-system-ui` advisory during prebuild                                | pre-existing, non-blocking            | See Known gaps.                                                                                                                                                                                                        |
+| Kotlin/Java/C++ deprecation warnings during `assembleDebug`              | pre-existing, non-blocking            | 728 tasks completed regardless.                                                                                                                                                                                        |
+
+Blocking: **none**.
 
 ## Exact next phase
 
-Phase 5 is booking fulfillment beyond payment: enforce capture settings deliberately (decide auto-capture vs manual capture as a recorded decision), then build the customer pass/QR for confirmed bookings. Payment refunds, cancellation policy, and staff-facing payment views require explicit product decisions first. Do not merge into `main` without an explicit request.
+The gate between here and Phase 5 is **device validation, not more code**. Run
+`docs/DEVICE_SMOKE_CHECKLIST.md` on a real Android development build with Razorpay TEST mode and
+record pass/fail per row. The shortest path that answers "can this device take a TEST payment" is
+listed under **Manual smoke checklist**. Two things must be done on the dashboard first: confirm
+auto capture is enabled in test mode, and register the webhook URL with `RAZORPAY_WEBHOOK_SECRET`.
 
-Before any of that can be verified on a device, the two native blockers listed under known gaps have to be cleared: settle the pnpm linker mismatch, then realign the Expo SDK native ranges with `expo install`. That is build work, not product work, and it should land as its own change so a regression is attributable. Do not claim Expo Go support; this app needs a development build.
+Once device validation passes, Phase 5 is booking fulfillment beyond payment: enforce capture
+settings deliberately (decide auto-capture vs manual capture as a recorded decision in
+`docs/DECISIONS.md`), then build the customer pass/QR for confirmed bookings. Payment refunds,
+cancellation policy, and staff-facing payment views require explicit product decisions first. Do
+not merge into `main` without an explicit request, and do not claim Expo Go support — this app
+needs a development build.
 
 ## Multi-device recovery
 
