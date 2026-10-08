@@ -47,7 +47,9 @@ export function SignInScreen() {
       setError(error.message);
       return;
     }
-    navigation.replace('Home');
+    // Success: the provider now holds the session and RootNavigator swaps to
+    // the customer navigator (initial route Home). No explicit navigation —
+    // the auth state transition owns the routing.
   };
 
   return (
@@ -58,8 +60,6 @@ export function SignInScreen() {
         keyboardDismissMode="on-drag"
       >
         <PageHeader title="Welcome back" description="Sign in to your Turf & Taste account" />
-
-        {error && <ErrorState title="Sign in failed" description={error} />}
 
         <Card>
           <View className="gap-4">
@@ -103,9 +103,7 @@ export function SignInScreen() {
             />
           </View>
 
-          {error && !errors.email && !errors.password && (
-            <ErrorState title="Sign in failed" description={error} />
-          )}
+          {error && <ErrorState title="Sign in failed" description={error} />}
 
           <Button
             label={submitting ? 'Signing in...' : 'Sign in'}

@@ -108,9 +108,7 @@ export function ForgotPasswordScreen() {
             />
           </View>
 
-          {error && !errors.email && (
-            <ErrorState title="Failed to send reset email" description={error} />
-          )}
+          {error && <ErrorState title="Failed to send reset email" description={error} />}
 
           <Button
             label={submitting ? 'Sending...' : 'Send reset link'}

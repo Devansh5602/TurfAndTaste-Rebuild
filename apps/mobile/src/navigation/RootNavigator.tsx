@@ -1,4 +1,4 @@
-import { RootStack, AuthStack, CustomerStack } from './types';
+import { AuthStack, CustomerStack } from './types';
 import { useAuth } from '../context/AuthContext';
 import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
 import { SignInScreen } from '../screens/auth/SignInScreen';
@@ -13,7 +13,6 @@ import { PaymentScreen } from '../screens/customer/PaymentScreen';
 import { MyBookingsScreen } from '../screens/customer/MyBookingsScreen';
 import { ProfileScreen } from '../screens/customer/ProfileScreen';
 import { LoadingState } from '@turf-and-taste/ui-native';
-import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 export function AuthNavigator() {
@@ -42,15 +41,23 @@ export function CustomerNavigator() {
   );
 }
 
+/**
+ * Route guard.
+ *
+ * Auth initialization must finish before any redirect decision: while
+ * `loading` is true (initial session hydration only) we render the session
+ * restore state instead of a navigator, so a valid restored session never
+ * flashes the Sign In screens.
+ *
+ * The session alone selects the root navigator. Swapping whole navigators on
+ * session change gives deterministic entry routes — Home after login,
+ * Welcome after logout — with no redirect loops and no dependency on
+ * in-flight action state (sign-in actions never set `loading`).
+ */
 export function RootNavigator() {
   const { session, loading } = useAuth();
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || loading) {
+  if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <LoadingState label="Restoring session..." />
@@ -58,27 +65,5 @@ export function RootNavigator() {
     );
   }
 
-  return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {session ? (
-        <>
-          <RootStack.Screen name="Home" component={CustomerNavigator} />
-          <RootStack.Screen name="Facilities" component={FacilitiesScreen} />
-          <RootStack.Screen name="FacilityDetail" component={FacilityDetailScreen} />
-          <RootStack.Screen name="Booking" component={BookingScreen} />
-          <RootStack.Screen name="MyBookings" component={MyBookingsScreen} />
-          <RootStack.Screen name="BookingDetail" component={BookingDetailScreen} />
-          <RootStack.Screen name="Payment" component={PaymentScreen} />
-          <RootStack.Screen name="Profile" component={ProfileScreen} />
-        </>
-      ) : (
-        <>
-          <RootStack.Screen name="Welcome" component={WelcomeScreen} />
-          <RootStack.Screen name="SignIn" component={SignInScreen} />
-          <RootStack.Screen name="CreateAccount" component={CreateAccountScreen} />
-          <RootStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        </>
-      )}
-    </RootStack.Navigator>
-  );
+  return session ? <CustomerNavigator /> : <AuthNavigator />;
 }

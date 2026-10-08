@@ -59,6 +59,5 @@ export type ExtendedNavigationProp = NativeStackNavigationProp<RootStackParamLis
   replace: (name: keyof RootStackParamList, params?: Record<string, unknown>) => void;
 };
 
-export const RootStack = createNativeStackNavigator<RootStackParamList>();
 export const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 export const CustomerStack = createNativeStackNavigator<CustomerStackParamList>();
