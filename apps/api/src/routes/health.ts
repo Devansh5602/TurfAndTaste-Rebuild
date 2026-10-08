@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { currentRequestId } from '../middleware/request-id';
-import { success } from '../utils/response';
+import { currentRequestId } from '../middleware/request-id.js';
+import { success } from '../utils/response.js';
 
 export const healthRouter = Router();
 

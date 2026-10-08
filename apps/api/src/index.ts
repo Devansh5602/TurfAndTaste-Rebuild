@@ -1,6 +1,6 @@
 import express from 'express';
-import { createApp } from './application';
-import { readEnv } from './config/env';
+import { createApp } from './application.js';
+import { readEnv } from './config/env.js';
 
 // Vercel's Express runtime invokes the exported app directly. Keep the local
 // listener in server.ts so local development and long-running Node hosts still

@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { HttpError } from '../errors/http-error';
-import { currentRequestId } from './request-id';
-import { failure } from '../utils/response';
+import { HttpError } from '../errors/http-error.js';
+import { currentRequestId } from './request-id.js';
+import { failure } from '../utils/response.js';
 
 export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
   const requestId = currentRequestId(res);

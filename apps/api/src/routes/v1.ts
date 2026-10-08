@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import type { ApiEnv } from '../config/env';
-import { createAuthMiddleware, requireAuth, requireDomain } from '../middleware/auth';
-import { createBookingRoutes } from './booking';
-import { createPaymentRoutes, createPaymentWebhookRoutes } from './payment';
-import { createProfileRoutes } from './profile';
+import type { ApiEnv } from '../config/env.js';
+import { createAuthMiddleware, requireAuth, requireDomain } from '../middleware/auth.js';
+import { createBookingRoutes } from './booking.js';
+import { createPaymentRoutes, createPaymentWebhookRoutes } from './payment.js';
+import { createProfileRoutes } from './profile.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { AvailabilityService } from '../services/domain';
-import { PricingService, FacilitiesService, SchedulesService } from '../services/domain';
-import { PaymentService } from '../services/payment';
+import { AvailabilityService } from '../services/domain.js';
+import { PricingService, FacilitiesService, SchedulesService } from '../services/domain.js';
+import { PaymentService } from '../services/payment.js';
 
 export function createV1Router(env: ApiEnv, supabase: SupabaseClient) {
   const router = Router();

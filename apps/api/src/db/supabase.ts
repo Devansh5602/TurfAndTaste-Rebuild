@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
-import type { ApiEnv } from '../config/env';
+import type { ApiEnv } from '../config/env.js';
 import WebSocket from 'ws';
 
 export function createSupabaseAdmin(env: ApiEnv): SupabaseClient {

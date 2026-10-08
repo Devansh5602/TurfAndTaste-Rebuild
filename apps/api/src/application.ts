@@ -5,13 +5,13 @@ import type { HelmetOptions } from 'helmet';
 import { createRequire } from 'node:module';
 import { pino } from 'pino';
 import { pinoHttp } from 'pino-http';
-import type { ApiEnv } from './config/env';
-import { errorHandler } from './middleware/error-handler';
-import { notFound } from './middleware/not-found';
-import { requestId } from './middleware/request-id';
-import { healthRouter } from './routes/health';
-import { createV1Router } from './routes/v1';
-import { createSupabaseAdmin } from './db/supabase';
+import type { ApiEnv } from './config/env.js';
+import { errorHandler } from './middleware/error-handler.js';
+import { notFound } from './middleware/not-found.js';
+import { requestId } from './middleware/request-id.js';
+import { healthRouter } from './routes/health.js';
+import { createV1Router } from './routes/v1.js';
+import { createSupabaseAdmin } from './db/supabase.js';
 
 // Helmet's runtime CommonJS export is callable, but its conditional declarations are
 // interpreted as a namespace by Vercel's function tracer. Load that documented CJS

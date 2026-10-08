@@ -8,18 +8,18 @@ import {
   quoteSelectionSchema,
 } from '@turf-and-taste/schemas';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { HttpError } from '../errors/http-error';
-import { requireAuth, requireDomain, type AuthenticatedRequest } from '../middleware/auth';
-import { currentRequestId } from '../middleware/request-id';
-import { BookingService, QuoteService } from '../services/booking';
+import { HttpError } from '../errors/http-error.js';
+import { requireAuth, requireDomain, type AuthenticatedRequest } from '../middleware/auth.js';
+import { currentRequestId } from '../middleware/request-id.js';
+import { BookingService, QuoteService } from '../services/booking.js';
 import type {
   AvailabilityService,
   FacilitiesService,
   PricingService,
   SchedulesService,
-} from '../services/domain';
-import { success } from '../utils/response';
-import { parseInput } from '../utils/validate';
+} from '../services/domain.js';
+import { success } from '../utils/response.js';
+import { parseInput } from '../utils/validate.js';
 
 export function createBookingRoutes(
   supabase: SupabaseClient,

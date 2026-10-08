@@ -3,12 +3,12 @@ import {
   createPaymentOrderSchema,
   verifyPaymentSchema,
 } from '@turf-and-taste/schemas';
-import { parseInput } from '../utils/validate';
-import { currentRequestId } from '../middleware/request-id';
-import { success } from '../utils/response';
-import type { AuthenticatedRequest } from '../middleware/auth';
-import type { PaymentService } from '../services/payment';
-import { HttpError } from '../errors/http-error';
+import { parseInput } from '../utils/validate.js';
+import { currentRequestId } from '../middleware/request-id.js';
+import { success } from '../utils/response.js';
+import type { AuthenticatedRequest } from '../middleware/auth.js';
+import type { PaymentService } from '../services/payment.js';
+import { HttpError } from '../errors/http-error.js';
 
 export function createPaymentRoutes(paymentService: PaymentService) {
   const router = Router();

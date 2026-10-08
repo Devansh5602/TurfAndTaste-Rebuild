@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
-import { HttpError } from '../errors/http-error';
-import { createSupabaseAdmin, createSupabaseClient } from '../db/supabase';
-import type { ApiEnv } from '../config/env';
+import { HttpError } from '../errors/http-error.js';
+import { createSupabaseAdmin, createSupabaseClient } from '../db/supabase.js';
+import type { ApiEnv } from '../config/env.js';
 import type { AuthDomain } from '@turf-and-taste/types';
 
 export interface AuthenticatedRequest extends Request {

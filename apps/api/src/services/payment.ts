@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { HttpError } from '../errors/http-error';
-import type { ApiEnv } from '../config/env';
+import { HttpError } from '../errors/http-error.js';
+import type { ApiEnv } from '../config/env.js';
 import Razorpay from 'razorpay';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 

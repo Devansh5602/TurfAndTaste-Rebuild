@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { parseInput } from '../utils/validate';
-import { currentRequestId } from '../middleware/request-id';
-import { success } from '../utils/response';
-import type { AuthenticatedRequest } from '../middleware/auth';
+import { parseInput } from '../utils/validate.js';
+import { currentRequestId } from '../middleware/request-id.js';
+import { success } from '../utils/response.js';
+import type { AuthenticatedRequest } from '../middleware/auth.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export function createProfileRoutes(supabase: SupabaseClient) {

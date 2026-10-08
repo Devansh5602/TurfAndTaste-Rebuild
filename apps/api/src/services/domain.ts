@@ -6,7 +6,7 @@ import {
   businessTime,
   businessWeekday,
 } from '@turf-and-taste/schemas';
-import { HttpError } from '../errors/http-error';
+import { HttpError } from '../errors/http-error.js';
 
 export interface Facility {
   id: string;

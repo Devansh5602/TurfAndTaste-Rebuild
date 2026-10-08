@@ -7,8 +7,8 @@ import {
   businessTime,
   quoteSelectionSchema,
 } from '@turf-and-taste/schemas';
-import { HttpError } from '../errors/http-error';
-import type { AvailabilityService, FacilitiesService, PricingService } from './domain';
+import { HttpError } from '../errors/http-error.js';
+import type { AvailabilityService, FacilitiesService, PricingService } from './domain.js';
 
 export interface Quote {
   id: string;

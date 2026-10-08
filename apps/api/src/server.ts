@@ -2,11 +2,11 @@
 // Must be set before importing Supabase client
 // Only needed in development/test where Node.js < 22 may be used
 if (process.env.NODE_ENV !== 'production') {
-  await import('./polyfills');
+  await import('./polyfills.js');
 }
 
-import { createApp } from './application';
-import { readEnv } from './config/env';
+import { createApp } from './application.js';
+import { readEnv } from './config/env.js';
 
 const env = readEnv();
 const app = createApp(env);
