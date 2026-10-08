@@ -1,4 +1,10 @@
-import { isNetworkError, logAuthDiagnostics, toFriendlyAuthError } from './authErrors';
+import {
+  isNetworkError,
+  logAuthDiagnostics,
+  NETWORK_UNAVAILABLE_MESSAGE,
+  toFriendlyAuthError,
+  VERIFICATION_LINK_INVALID_MESSAGE,
+} from './authErrors';
 
 function authError(message: string, code?: string, name = 'AuthApiError'): Error {
   const error = new Error(message);
@@ -13,13 +19,25 @@ describe('toFriendlyAuthError', () => {
   it('maps invalid credentials to a safe sign-in message', () => {
     expect(
       toFriendlyAuthError('signIn', authError('Invalid login credentials', 'invalid_credentials')),
-    ).toBe('Invalid email or password');
+    ).toBe('Invalid email or password.');
   });
 
   it('maps unverified e-mail to a verification message', () => {
     expect(
       toFriendlyAuthError('signIn', authError('Email not confirmed', 'email_not_confirmed')),
     ).toBe('Please verify your email before signing in.');
+  });
+
+  it('maps expired or superseded confirmation links distinctly from bad credentials', () => {
+    expect(toFriendlyAuthError('signIn', authError('Email link invalid', 'otp_expired'))).toBe(
+      VERIFICATION_LINK_INVALID_MESSAGE,
+    );
+    expect(
+      toFriendlyAuthError(
+        'signUp',
+        authError('Email link is invalid or has expired', 'access_denied'),
+      ),
+    ).toBe(VERIFICATION_LINK_INVALID_MESSAGE);
   });
 
   it('maps existing-account registration failures', () => {
@@ -34,17 +52,20 @@ describe('toFriendlyAuthError', () => {
   it('maps network failures for every action', () => {
     const network = new TypeError('Network request failed');
     expect(toFriendlyAuthError('signIn', network)).toBe(
-      'Network unavailable. Please check your connection and try again.',
+      'Unable to connect. Check your internet connection and try again.',
     );
     expect(toFriendlyAuthError('signUp', network)).toBe(
-      'Network unavailable. Please check your connection and try again.',
+      'Unable to connect. Check your internet connection and try again.',
     );
     expect(
       toFriendlyAuthError(
         'resetPassword',
         authError('TypeError: Failed to fetch', undefined, 'AuthRetryableFetchError'),
       ),
-    ).toBe('Network unavailable. Please check your connection and try again.');
+    ).toBe('Unable to connect. Check your internet connection and try again.');
+    expect(NETWORK_UNAVAILABLE_MESSAGE).toBe(
+      'Unable to connect. Check your internet connection and try again.',
+    );
   });
 
   it('maps rate limits to a wait-and-retry message', () => {
@@ -56,7 +77,7 @@ describe('toFriendlyAuthError', () => {
           'over_email_send_rate_limit',
         ),
       ),
-    ).toBe('Too many attempts. Please wait a moment and try again.');
+    ).toBe('Too many attempts. Please wait and try again.');
   });
 
   it('maps weak passwords without echoing server internals', () => {

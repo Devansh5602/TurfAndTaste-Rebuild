@@ -1,7 +1,14 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import type { Session, User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { AuthProvider, useAuth } from './AuthContext';
-import { supabase } from '../auth/supabase';
+import {
+  clearPendingVerificationEmail,
+  readPendingVerificationEmail,
+  storePendingVerificationEmail,
+  supabase,
+} from '../auth/supabase';
+import { MOBILE_AUTH_CALLBACK_URL } from '../auth/authCallback';
 
 jest.mock('../auth/supabase', () => {
   const auth = {
@@ -13,9 +20,21 @@ jest.mock('../auth/supabase', () => {
     resend: jest.fn(),
     refreshSession: jest.fn(),
     onAuthStateChange: jest.fn(),
+    setSession: jest.fn(),
+    exchangeCodeForSession: jest.fn(),
   };
-  return { supabase: { auth } };
+  return {
+    supabase: { auth },
+    readPendingVerificationEmail: jest.fn(),
+    storePendingVerificationEmail: jest.fn(),
+    clearPendingVerificationEmail: jest.fn(),
+  };
 });
+
+jest.mock('expo-linking', () => ({
+  getInitialURL: jest.fn(),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
 
 interface AuthMock {
   getSession: jest.Mock;
@@ -26,8 +45,14 @@ interface AuthMock {
   resend: jest.Mock;
   refreshSession: jest.Mock;
   onAuthStateChange: jest.Mock;
+  setSession: jest.Mock;
+  exchangeCodeForSession: jest.Mock;
 }
 const auth = supabase.auth as unknown as AuthMock;
+const pendingRead = readPendingVerificationEmail as jest.Mock;
+const pendingStore = storePendingVerificationEmail as jest.Mock;
+const pendingClear = clearPendingVerificationEmail as jest.Mock;
+const linking = Linking as unknown as { getInitialURL: jest.Mock; addEventListener: jest.Mock };
 
 const user = { id: 'user-1', email: 'person@example.com' } as User;
 const session = {
@@ -93,6 +118,11 @@ describe('AuthProvider', () => {
       authCallback = callback as (event: string, session: Session | null) => void;
       return { data: { subscription: { unsubscribe } } };
     });
+    linking.getInitialURL.mockResolvedValue(null);
+    linking.addEventListener.mockImplementation(() => ({ remove: jest.fn() }));
+    pendingRead.mockResolvedValue(null);
+    pendingStore.mockResolvedValue(undefined);
+    pendingClear.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -177,9 +207,9 @@ describe('AuthProvider', () => {
         failure = await context.signIn('person@example.com', 'wrong-password');
       });
 
-      expect(failure?.message).toBe('Invalid email or password');
+      expect(failure?.message).toBe('Invalid email or password.');
       expect(context.session).toBeNull();
-      expect(context.error).toBe('Invalid email or password');
+      expect(context.error).toBe('Invalid email or password.');
       // The historical defect: a failed sign-in left loading stuck at true,
       // which unmounted the navigator and silently discarded the error.
       expect(context.loading).toBe(false);
@@ -215,7 +245,7 @@ describe('AuthProvider', () => {
       });
 
       expect(failure?.message).toBe(
-        'Network unavailable. Please check your connection and try again.',
+        'Unable to connect. Check your internet connection and try again.',
       );
       expect(context.session).toBeNull();
       expect(context.loading).toBe(false);
@@ -253,6 +283,17 @@ describe('AuthProvider', () => {
       });
 
       expect(result).toEqual({ error: null, signedIn: false, verificationRequired: true });
+      // The confirmation e-mail must target the app's canonical callback,
+      // and the address is remembered for post-restart resends.
+      expect(auth.signUp).toHaveBeenCalledWith({
+        email: 'person@example.com',
+        password: 'a-strong-password',
+        options: {
+          data: { full_name: 'Person One' },
+          emailRedirectTo: MOBILE_AUTH_CALLBACK_URL,
+        },
+      });
+      expect(pendingStore).toHaveBeenCalledWith('person@example.com');
       expect(context.session).toBeNull();
       expect(context.user).toBeNull();
       expect(context.error).toBeNull();
@@ -393,7 +434,7 @@ describe('AuthProvider', () => {
         failure = await context.resetPassword('person@example.com');
       });
 
-      expect(failure?.message).toBe('Too many attempts. Please wait a moment and try again.');
+      expect(failure?.message).toBe('Too many attempts. Please wait and try again.');
       expect(context.loading).toBe(false);
     });
 
@@ -407,9 +448,158 @@ describe('AuthProvider', () => {
         failure = await context.resendVerificationEmail('person@example.com');
       });
 
-      expect(auth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'person@example.com' });
+      expect(auth.resend).toHaveBeenCalledWith({
+        type: 'signup',
+        email: 'person@example.com',
+        options: { emailRedirectTo: MOBILE_AUTH_CALLBACK_URL },
+      });
       expect(failure).toBeNull();
       expect(context.loading).toBe(false);
+    });
+  });
+
+  describe('email confirmation callback', () => {
+    it('establishes the session from a confirmation deep link', async () => {
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://auth/callback#access_token=deep-access&refresh_token=deep-refresh',
+      );
+      auth.setSession.mockResolvedValue({ data: { session }, error: null });
+
+      renderProvider();
+      await waitForHydration();
+      await waitFor(() => expect(context.session).toBe(session));
+
+      expect(auth.setSession).toHaveBeenCalledWith({
+        access_token: 'deep-access',
+        refresh_token: 'deep-refresh',
+      });
+      expect(context.user).toBe(user);
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
+      expect(context.pendingVerificationEmail).toBeNull();
+      expect(pendingClear).toHaveBeenCalled();
+    });
+
+    it('shows the recoverable invalid state for an expired link', async () => {
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://auth/callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired',
+      );
+      pendingRead.mockResolvedValue('person@example.com');
+
+      renderProvider();
+      await waitForHydration();
+      await waitFor(() => expect(context.emailConfirmation.status).toBe('invalid'));
+
+      expect(context.emailConfirmation).toEqual({
+        status: 'invalid',
+        title: 'Verification link expired or invalid',
+        message: 'Your verification link has expired or is invalid. Request a new one.',
+      });
+      expect(context.pendingVerificationEmail).toBe('person@example.com');
+      expect(auth.setSession).not.toHaveBeenCalled();
+      expect(context.session).toBeNull();
+    });
+
+    it('dismisses the invalid state toward Sign In as an explicit action', async () => {
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://auth/callback#error=access_denied&error_code=otp_expired',
+      );
+
+      renderProvider();
+      await waitForHydration();
+      await waitFor(() => expect(context.emailConfirmation.status).toBe('invalid'));
+
+      await act(async () => {
+        context.dismissEmailConfirmation();
+      });
+
+      expect(context.emailConfirmation).toEqual({ status: 'signInEntry' });
+      expect(context.session).toBeNull();
+    });
+
+    it('ignores callbacks that arrive while a session already exists', async () => {
+      auth.getSession.mockResolvedValue({ data: { session }, error: null });
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://auth/callback#error=access_denied&error_code=otp_expired',
+      );
+
+      renderProvider();
+      await waitForHydration();
+      // The callback handler performs its own getSession() probe.
+      await waitFor(() => expect(auth.getSession.mock.calls.length).toBeGreaterThanOrEqual(2));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(context.session).toBe(session);
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
+      expect(auth.setSession).not.toHaveBeenCalled();
+    });
+
+    it('ignores deep links that are not the confirmation callback', async () => {
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://reset-password#access_token=a&refresh_token=b',
+      );
+
+      renderProvider();
+      await waitForHydration();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      // Hydration's getSession() is the only probe; no exchange is attempted.
+      expect(auth.getSession).toHaveBeenCalledTimes(1);
+      expect(auth.setSession).not.toHaveBeenCalled();
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
+      expect(context.session).toBeNull();
+    });
+
+    it('handles a confirmation link that arrives while the app is open', async () => {
+      renderProvider();
+      await waitForHydration();
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
+
+      auth.setSession.mockResolvedValue({ data: { session }, error: null });
+      const listener = linking.addEventListener.mock.calls[0]?.[1] as (event: {
+        url: string;
+      }) => void;
+      expect(typeof listener).toBe('function');
+
+      await act(async () => {
+        listener({
+          url: 'turfandtaste://auth/callback#access_token=warm-access&refresh_token=warm-refresh',
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(auth.setSession).toHaveBeenCalledWith({
+        access_token: 'warm-access',
+        refresh_token: 'warm-refresh',
+      });
+      expect(context.session).toBe(session);
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
+    });
+
+    it('forgets the stored verification address once a session is established', async () => {
+      renderProvider();
+      await waitForHydration();
+
+      auth.signUp.mockResolvedValue({
+        data: { user: { ...user, identities: [{ id: 'email-identity' }] }, session: null },
+        error: null,
+      });
+      await act(async () => {
+        await context.signUp('person@example.com', 'a-strong-password', 'Person One');
+      });
+      expect(pendingStore).toHaveBeenCalledWith('person@example.com');
+      expect(pendingClear).not.toHaveBeenCalled();
+
+      await act(async () => {
+        authCallback?.('SIGNED_IN', session);
+      });
+
+      expect(pendingClear).toHaveBeenCalled();
+      expect(context.pendingVerificationEmail).toBeNull();
+      expect(context.emailConfirmation).toEqual({ status: 'idle' });
     });
   });
 

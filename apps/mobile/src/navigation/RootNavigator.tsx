@@ -1,9 +1,10 @@
-import { AuthStack, CustomerStack } from './types';
+import { AuthStack, CustomerStack, type AuthStackParamList } from './types';
 import { useAuth } from '../context/AuthContext';
 import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
 import { SignInScreen } from '../screens/auth/SignInScreen';
 import { CreateAccountScreen } from '../screens/auth/CreateAccountScreen';
 import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
+import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
 import { HomeScreen } from '../screens/customer/HomeScreen';
 import { FacilitiesScreen } from '../screens/customer/FacilitiesScreen';
 import { FacilityDetailScreen } from '../screens/customer/FacilityDetailScreen';
@@ -15,9 +16,13 @@ import { ProfileScreen } from '../screens/customer/ProfileScreen';
 import { LoadingState } from '@turf-and-taste/ui-native';
 import { View } from 'react-native';
 
-export function AuthNavigator() {
+export function AuthNavigator({
+  initialRouteName,
+}: {
+  initialRouteName?: keyof AuthStackParamList;
+} = {}) {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
       <AuthStack.Screen name="SignIn" component={SignInScreen} />
       <AuthStack.Screen name="CreateAccount" component={CreateAccountScreen} />
@@ -53,9 +58,15 @@ export function CustomerNavigator() {
  * session change gives deterministic entry routes — Home after login,
  * Welcome after logout — with no redirect loops and no dependency on
  * in-flight action state (sign-in actions never set `loading`).
+ *
+ * The e-mail confirmation callback is the only exception with its own
+ * root-level states: `processing` while a deep link is being exchanged and
+ * `invalid` for the branded recoverable state. Both are driven exclusively
+ * by URL arrival and user action, so they cannot loop; once a session
+ * exists the customer navigator wins unconditionally.
  */
 export function RootNavigator() {
-  const { session, loading } = useAuth();
+  const { session, loading, emailConfirmation } = useAuth();
 
   if (loading) {
     return (
@@ -65,5 +76,27 @@ export function RootNavigator() {
     );
   }
 
-  return session ? <CustomerNavigator /> : <AuthNavigator />;
+  if (session) {
+    return <CustomerNavigator />;
+  }
+
+  if (emailConfirmation.status === 'processing') {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <LoadingState label="Completing verification..." />
+      </View>
+    );
+  }
+
+  if (emailConfirmation.status === 'invalid') {
+    return <AuthCallbackScreen />;
+  }
+
+  // signInEntry: remount the auth stack directly on Sign In (fresh mount, so
+  // initialRouteName applies). Every other signed-out state starts at Welcome.
+  return (
+    <AuthNavigator
+      initialRouteName={emailConfirmation.status === 'signInEntry' ? 'SignIn' : undefined}
+    />
+  );
 }

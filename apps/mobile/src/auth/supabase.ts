@@ -32,3 +32,39 @@ export interface CustomerAuthState {
   loading: boolean;
   error: string | null;
 }
+
+/**
+ * Pending e-mail verification address, kept in the device keychain.
+ *
+ * The confirmation link often opens the app after the OS has killed the
+ * sign-up screen, so the recoverable "link expired" state can only offer
+ * "Resend verification email" if the address survived the restart. It is
+ * cleared as soon as a session is established (verification completed).
+ * This is device-local PII, never synced and never sent anywhere by this
+ * module — Supabase already knows the address from sign-up.
+ */
+const PENDING_VERIFICATION_EMAIL_KEY = 'turfandtaste.pending-verification-email';
+
+export async function readPendingVerificationEmail(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(PENDING_VERIFICATION_EMAIL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function storePendingVerificationEmail(email: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(PENDING_VERIFICATION_EMAIL_KEY, email);
+  } catch {
+    // Non-fatal: only the convenience resend action degrades.
+  }
+}
+
+export async function clearPendingVerificationEmail(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(PENDING_VERIFICATION_EMAIL_KEY);
+  } catch {
+    // Non-fatal: stale address would only be reused for another resend.
+  }
+}

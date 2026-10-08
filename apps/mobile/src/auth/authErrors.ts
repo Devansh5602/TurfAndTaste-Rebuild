@@ -8,6 +8,12 @@
 
 export type AuthAction = 'signIn' | 'signUp' | 'resetPassword' | 'resendVerification';
 
+/** Shared user-safe copy so every surface says the same thing. */
+export const NETWORK_UNAVAILABLE_MESSAGE =
+  'Unable to connect. Check your internet connection and try again.';
+export const VERIFICATION_LINK_INVALID_MESSAGE =
+  'Your verification link has expired or is invalid. Request a new one.';
+
 const FALLBACK_MESSAGES: Record<AuthAction, string> = {
   signIn: 'Unable to sign in. Please try again.',
   signUp: 'Unable to create your account. Please try again.',
@@ -52,14 +58,20 @@ export function toFriendlyAuthError(action: AuthAction, error: unknown): string 
   const lower = message.toLowerCase();
 
   if (isNetworkError(error)) {
-    return 'Network unavailable. Please check your connection and try again.';
+    return NETWORK_UNAVAILABLE_MESSAGE;
+  }
+
+  // Confirmation-link failures (expired, superseded, or consumed) are a
+  // distinct, recoverable state — never present them as bad credentials.
+  if (code === 'otp_expired' || lower.includes('invalid or has expired')) {
+    return VERIFICATION_LINK_INVALID_MESSAGE;
   }
 
   if (code === 'invalid_credentials' || code === 'user_not_found') {
-    return action === 'signIn' ? 'Invalid email or password' : FALLBACK_MESSAGES[action];
+    return action === 'signIn' ? 'Invalid email or password.' : FALLBACK_MESSAGES[action];
   }
   if (lower.includes('invalid login credentials')) {
-    return 'Invalid email or password';
+    return 'Invalid email or password.';
   }
   if (code === 'email_not_confirmed' || lower.includes('email not confirmed')) {
     return 'Please verify your email before signing in.';
@@ -75,7 +87,7 @@ export function toFriendlyAuthError(action: AuthAction, error: unknown): string 
     lower.includes('rate limit') ||
     lower.includes('security purposes')
   ) {
-    return 'Too many attempts. Please wait a moment and try again.';
+    return 'Too many attempts. Please wait and try again.';
   }
   if (code === 'signup_disabled') {
     return 'Account creation is currently disabled.';

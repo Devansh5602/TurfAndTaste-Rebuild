@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import type { Session, User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { ThemeProvider } from '@turf-and-taste/ui-native';
 import { AuthProvider } from '../context/AuthContext';
 import { RootNavigator } from './RootNavigator';
-import { supabase } from '../auth/supabase';
+import { readPendingVerificationEmail, supabase } from '../auth/supabase';
+import { MOBILE_AUTH_CALLBACK_URL } from '../auth/authCallback';
 
 jest.mock('../auth/supabase', () => {
   const auth = {
@@ -16,9 +18,21 @@ jest.mock('../auth/supabase', () => {
     resend: jest.fn(),
     refreshSession: jest.fn(),
     onAuthStateChange: jest.fn(),
+    setSession: jest.fn(),
+    exchangeCodeForSession: jest.fn(),
   };
-  return { supabase: { auth } };
+  return {
+    supabase: { auth },
+    readPendingVerificationEmail: jest.fn(),
+    storePendingVerificationEmail: jest.fn(),
+    clearPendingVerificationEmail: jest.fn(),
+  };
 });
+
+jest.mock('expo-linking', () => ({
+  getInitialURL: jest.fn(),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
 
 // Customer screens are stubbed: this suite exercises auth state → route
 // guard → navigation, not each customer screen's data fetching.
@@ -57,8 +71,12 @@ interface AuthMock {
   resend: jest.Mock;
   refreshSession: jest.Mock;
   onAuthStateChange: jest.Mock;
+  setSession: jest.Mock;
+  exchangeCodeForSession: jest.Mock;
 }
 const auth = supabase.auth as unknown as AuthMock;
+const pendingRead = readPendingVerificationEmail as jest.Mock;
+const linking = Linking as unknown as { getInitialURL: jest.Mock; addEventListener: jest.Mock };
 
 const user = { id: 'user-1', email: 'person@example.com' } as User;
 const session = {
@@ -135,6 +153,9 @@ describe('RootNavigator auth routing', () => {
       authCallback = callback as (event: string, session: Session | null) => void;
       return { data: { subscription: { unsubscribe } } };
     });
+    linking.getInitialURL.mockResolvedValue(null);
+    linking.addEventListener.mockImplementation(() => ({ remove: jest.fn() }));
+    pendingRead.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -189,7 +210,7 @@ describe('RootNavigator auth routing', () => {
 
     await fillAndSubmitSignIn('person@example.com', 'wrong-password');
 
-    expect(await screen.findByText('Invalid email or password')).toBeTruthy();
+    expect(await screen.findByText('Invalid email or password.')).toBeTruthy();
     expect(screen.queryByTestId('home-screen')).toBeNull();
     // Regression: the old provider set loading=true during the action, which
     // unmounted the navigator, discarded the error, and reset to Welcome.
@@ -231,16 +252,21 @@ describe('RootNavigator auth routing', () => {
     expect(auth.signUp).toHaveBeenCalledWith({
       email: 'person@example.com',
       password: 'password123',
-      options: { data: { full_name: 'Test Person' } },
+      options: {
+        data: { full_name: 'Test Person' },
+        emailRedirectTo: MOBILE_AUTH_CALLBACK_URL,
+      },
     });
 
-    // Resend is wired to the real Supabase resend endpoint.
+    // Resend is wired to the real Supabase resend endpoint with the same
+    // canonical redirect target as sign-up.
     auth.resend.mockResolvedValue({ error: null });
     pressTopmost('Resend verification email');
     expect(await screen.findByText('Verification email sent. Check your inbox.')).toBeTruthy();
     expect(auth.resend).toHaveBeenCalledWith({
       type: 'signup',
       email: 'person@example.com',
+      options: { emailRedirectTo: MOBILE_AUTH_CALLBACK_URL },
     });
 
     // Returning to Sign In is an explicit user action, not a silent bounce.
@@ -310,9 +336,125 @@ describe('RootNavigator auth routing', () => {
     await fillAndSubmitSignIn('person@example.com', 'password123');
 
     expect(
-      await screen.findByText('Network unavailable. Please check your connection and try again.'),
+      await screen.findByText('Unable to connect. Check your internet connection and try again.'),
     ).toBeTruthy();
     expect(screen.queryByTestId('home-screen')).toBeNull();
     expect(screen.getAllByText('Welcome back')).toHaveLength(1);
+  });
+
+  describe('email confirmation deep link', () => {
+    const expiredUrl =
+      'turfandtaste://auth/callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
+
+    it('exchanges a confirmation callback in the background and opens Home', async () => {
+      let resolveSetSession!: (value: { data: { session: Session | null }; error: null }) => void;
+      auth.setSession.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSetSession = resolve;
+        }),
+      );
+      linking.getInitialURL.mockResolvedValue(
+        'turfandtaste://auth/callback#access_token=deep-access&refresh_token=deep-refresh',
+      );
+
+      renderApp();
+
+      expect(await screen.findByText('Completing verification...')).toBeTruthy();
+      expect(screen.queryByTestId('home-screen')).toBeNull();
+
+      await act(async () => {
+        resolveSetSession({ data: { session }, error: null });
+      });
+
+      expect(await screen.findByTestId('home-screen')).toBeTruthy();
+      expect(screen.queryByText('Completing verification...')).toBeNull();
+      expect(auth.setSession).toHaveBeenCalledWith({
+        access_token: 'deep-access',
+        refresh_token: 'deep-refresh',
+      });
+    });
+
+    it('shows the recoverable expired state with resend, then returns to Sign In without a loop', async () => {
+      linking.getInitialURL.mockResolvedValue(expiredUrl);
+      pendingRead.mockResolvedValue('person@example.com');
+
+      renderApp();
+
+      expect(await screen.findByText('Verification link expired or invalid')).toBeTruthy();
+      expect(
+        screen.getByText('Your verification link has expired or is invalid. Request a new one.'),
+      ).toBeTruthy();
+      expect(screen.getByText('Resend verification email')).toBeTruthy();
+      expect(auth.setSession).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('home-screen')).toBeNull();
+      // No silent navigation: nothing else is on screen, exactly once.
+      expect(screen.queryByText('Welcome back')).toBeNull();
+      expect(screen.queryByText('Get started')).toBeNull();
+      expect(screen.getAllByText('Verification link expired or invalid')).toHaveLength(1);
+
+      // Resend uses the same canonical redirect target as sign-up.
+      auth.resend.mockResolvedValue({ error: null });
+      pressTopmost('Resend verification email');
+      expect(await screen.findByText('Verification email sent. Check your inbox.')).toBeTruthy();
+      expect(auth.resend).toHaveBeenCalledWith({
+        type: 'signup',
+        email: 'person@example.com',
+        options: { emailRedirectTo: MOBILE_AUTH_CALLBACK_URL },
+      });
+      // A successful resend does not navigate on its own either.
+      expect(screen.getAllByText('Verification link expired or invalid')).toHaveLength(1);
+
+      // Explicit customer action lands directly on Sign In — one surface, no loop.
+      pressTopmost('Back to Sign In');
+      expect(await screen.findByText('Welcome back')).toBeTruthy();
+      expect(screen.queryByText('Verification link expired or invalid')).toBeNull();
+      expect(screen.getAllByText('Welcome back')).toHaveLength(1);
+      expect(screen.queryByTestId('home-screen')).toBeNull();
+    });
+
+    it('offers only Sign In when no pending address survived on the device', async () => {
+      linking.getInitialURL.mockResolvedValue(expiredUrl);
+      pendingRead.mockResolvedValue(null);
+
+      renderApp();
+
+      expect(await screen.findByText('Verification link expired or invalid')).toBeTruthy();
+      expect(screen.queryByText('Resend verification email')).toBeNull();
+      expect(screen.getByText('Back to Sign In')).toBeTruthy();
+    });
+
+    it('keeps a signed-in customer in the app when a stale confirmation link arrives', async () => {
+      auth.getSession.mockResolvedValue({ data: { session }, error: null });
+      linking.getInitialURL.mockResolvedValue(expiredUrl);
+
+      renderApp();
+      expect(await screen.findByTestId('home-screen')).toBeTruthy();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(screen.queryByText('Verification link expired or invalid')).toBeNull();
+      expect(screen.getAllByTestId('home-screen')).toHaveLength(1);
+      expect(screen.queryByText('Restoring session...')).toBeNull();
+    });
+
+    it('handles a confirmation link that arrives while the app is already open', async () => {
+      renderApp();
+      expect(await screen.findByText('Get started')).toBeTruthy();
+      pendingRead.mockResolvedValue('person@example.com');
+
+      const listener = linking.addEventListener.mock.calls[0]?.[1] as (event: {
+        url: string;
+      }) => void;
+      expect(typeof listener).toBe('function');
+
+      await act(async () => {
+        listener({ url: expiredUrl });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(await screen.findByText('Verification link expired or invalid')).toBeTruthy();
+      expect(screen.queryByTestId('home-screen')).toBeNull();
+    });
   });
 });
