@@ -541,3 +541,31 @@ No source change was needed. Root lint, typecheck, tests, and build passed; API 
 GitHub Actions run `37739172260` remains green for implementation HEAD `40e630eee7f0cf30fdc21d5c5fdbbf2c65ecc24a`. This documentation checkpoint is the only repository change from the public validation.
 
 Remaining manual work: configure the URL and three events in the Razorpay TEST dashboard using the same webhook secret as Vercel; confirm TEST automatic capture; obtain a legitimate Preview customer session; then run authenticated availability → quote → booking → TEST order → checkout → verification and repeat/inspect webhook deliveries. Do not use live credentials or real money.
+
+## Customer Mobile remote integration checkpoint — 2026-10-08
+
+### Preview API configuration
+
+The committed encrypted Customer Mobile environment now resolves `EXPO_PUBLIC_API_URL` to:
+
+`https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app`
+
+Commit `9a72f83` changed only the encrypted public API URL value; Production configuration was not changed. A dotenvx-decrypted metadata check confirmed exact URL equality, HTTPS, and a non-local host without printing environment values. A fresh Android Expo export succeeded (2014 modules, Hermes bytecode, 31 assets). Source and generated-client scans found no server credential identifiers or live Razorpay key marker in the client bundle. Localhost references are limited to examples/tests and a foundation fallback that is not used when the configured variable is present; the real Customer screens read `EXPO_PUBLIC_API_URL` and therefore use the remote Preview endpoint.
+
+### Authentication and remote flow boundary
+
+Customer Mobile uses Supabase email/password authentication with the public URL and anonymous/publishable key, persists sessions in Expo SecureStore, refreshes tokens, and sends the access token to the API. The API validates the token through Supabase and requires the `customer` domain. No pre-existing test-customer credentials or supported automated fixture account exist in the repository, and no physical Android device/emulator/ADB is available on this machine. Therefore no account was invented and no RLS/auth bypass was attempted.
+
+Authenticated profile, availability, quote, booking creation, Razorpay TEST order creation, native checkout, and server verification remain blocked on a legitimate customer login plus a physical/development Android build. Public facilities/pricing and unauthenticated guards were already remotely validated in the preceding checkpoint. The mobile booking implementation invalidates a quote and selected slot when date, duration, or add-on changes; uses only future date choices and server-returned slots; displays the server quote; and sends no client total. Payment obtains the public key ID and authoritative booking/order amounts from protected API routes, passes only safe order data to native Razorpay, and confirms only after server verification. Cancelled, failed, loading, retry, session-expiry, paid, and unavailable states are implemented and covered where existing component/API tests apply; no claim is made that the requested physical widths or native interactions were exercised without a device.
+
+### Razorpay and webhook status
+
+Backend TEST order/verification and reconciliation remain covered by the passing API suite. Native Razorpay checkout, an actual provider success signature, and actual signed dashboard webhook delivery were not exercised. The public route still rejects missing and invalid signatures. Configure the Razorpay TEST dashboard with:
+
+`https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app/api/v1/payments/webhook/razorpay`
+
+Subscribe to `payment.captured`, `payment.failed`, and `payment.refunded`, use the same webhook secret as the Vercel Preview variable, and keep TEST automatic capture enabled.
+
+### Validation and next manual gate
+
+Root lint, typecheck, tests, and build passed; API typecheck, 44 tests, and build passed; mobile TypeScript passed; Android Expo export passed; and `git diff --check` passed. No Production deployment was made. The exact next gate is manual: create or sign into a legitimate Preview customer through Customer Mobile, then use an Android development build to run facility → availability → quote → booking → Razorpay TEST checkout → verification and inspect Razorpay TEST webhook deliveries. Use the minimum booking data and no live payment method.
