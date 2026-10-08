@@ -569,3 +569,39 @@ Subscribe to `payment.captured`, `payment.failed`, and `payment.refunded`, use t
 ### Validation and next manual gate
 
 Root lint, typecheck, tests, and build passed; API typecheck, 44 tests, and build passed; mobile TypeScript passed; Android Expo export passed; and `git diff --check` passed. No Production deployment was made. The exact next gate is manual: create or sign into a legitimate Preview customer through Customer Mobile, then use an Android development build to run facility → availability → quote → booking → Razorpay TEST checkout → verification and inspect Razorpay TEST webhook deliveries. Use the minimum booking data and no live payment method.
+
+## Customer authentication repair checkpoint — 2026-10-08
+
+- Starting HEAD: `3f73918` on `feature/customer-mobile-payments`.
+- Commits added by this checkpoint, oldest first:
+
+```text
+44cd134 fix(mobile-auth): validate public Supabase config at startup
+3f4338a fix(mobile-auth): repair customer session and post-login routing
+```
+
+- The final `docs:` commit that pins this block records itself by message only; `git rev-parse HEAD` is authoritative for the tip.
+
+### Root cause (forensic trace of submit → Supabase → provider → guard → navigation)
+
+1. The Supabase project requires e-mail confirmation (`mailer_autoconfirm: false`, read-only `GET /auth/v1/settings` probe). The password grant itself is healthy: a probe with obviously fake credentials returns `400 invalid_credentials`. Create Account therefore always returns `user != null, session == null`.
+2. `CreateAccountScreen` answered `session == null` with a silent `navigation.replace('SignIn')`, dropping the user back on Sign In with no message.
+3. `AuthProvider` set its hydration flag `loading` to true inside every sign-in/sign-up/sign-out/reset handler. `RootNavigator` treats `loading` as "hydration still running" and unmounts the navigator for it, so every auth action destroyed the mounted screen and its local error state, then remounted at the initial unauthenticated route. No screen ever read the context `error`, so invalid credentials, `email_not_confirmed`, and network failures were structurally undisplayable — a silent bounce to the auth stack. The `navigation.replace(...)` calls in submit handlers ran against the unmounted navigator (no-op plus dev warning), and a redundant `getSession()` after sign-in could race-overwrite the session the `SIGNED_IN` listener had stored.
+4. `src/auth/supabase.ts` still contained a dead second auth layer (module-level `onAuthStateChange` feeding a never-registered listener plus unused `signIn`/`signUp`/`initializeAuth` wrappers) competing with the AuthProvider path.
+
+### Repair
+
+- `AuthContext`: `loading` means only initial session hydration (false exactly once, never touched by actions); failures map through the new `src/auth/authErrors.ts` to safe copy (invalid credentials, verification required, account exists, weak password, rate limit, network, per-action generic fallback — raw GoTrue internals never reach customers); dev-only diagnostics log code/name only; `signUp` returns `{ error, signedIn, verificationRequired }` and detects an existing account via the obfuscated `identities: []` user; added `resendVerificationEmail`; sign-out always clears local state even when server-side revoke fails; `INITIAL_SESSION` is ignored so hydration cannot bounce a restored session.
+- `RootNavigator`: guards on hydration only, then swaps whole navigators by session (`CustomerNavigator` initial route Home, `AuthNavigator` initial route Welcome). Deterministic post-login routing, no redirect loops, no dependence on in-flight action state. The combined `RootStack` navigator was removed; `RootStackParamList` types remain for screen typing.
+- Screens: no `navigation.replace('Home')` on success (the state transition owns routing); sign-in errors render from the still-mounted screen; Create Account shows an explicit "Account created. Please verify your email to continue." panel with Resend verification email and a user-driven "Continue to Sign In"; duplicate gated error blocks removed from Sign In, Create Account, and Forgot Password.
+
+### Validation
+
+- Root lint, workspace typecheck, and `pnpm test` pass (API 53 tests including `security.test.ts`, mobile 56 tests); every touched file passes `prettier --check`; `git diff --check` clean; format-check failures are limited to 29 pre-existing untouched files.
+- Metro restarted with `cd apps/mobile && npx expo start --dev-client --clear --tunnel` (loads `.env.local` plaintext plus `.env`); the Android dev bundle at `http://localhost:8081/apps/mobile/index.bundle` returned HTTP 200 with 12,890,565 bytes on a fresh cache. Bundle scan: the real `*.supabase.co` URL inlined, `sb_publishable_` key only, zero JWTs, zero encrypted dotenv values, no `DOTENV_KEY`; every `sb_secret_`/`service_role` match is a validation-message literal. All new auth strings present; raw `Invalid login credentials` text absent.
+- New tests: `authErrors.test.ts` (error mapping incl. no-internal-leak assertions); `AuthContext.test.tsx` (hydration, sign-in success/failure/network, sign-up session/verification/existing-account, logout, session expiry via `SIGNED_OUT`, token refresh, `INITIAL_SESSION` ignore, unsubscribe on unmount, and `loading` never re-entering true after hydration); `RootNavigator.test.tsx` (ten integration cases: guard waits for hydration, restored session opens Home directly, failed sign-in stays on Sign In with a visible safe error and no reset to Welcome, verification panel plus resend, immediate-session sign-up, existing-account rejection, expiry → sign in again without restart, network error stays put); `apps/api/src/middleware/auth.test.ts` (customer session rejected by staff `requireDomain`/`requirePermission` without consulting staff permissions).
+- Native dependencies, config, and the generated Android project were unchanged (JS-only fix), so no Android dev-client rebuild was made. Metro was stopped afterwards and the deterministic Expo rewrite of `apps/mobile/tsconfig.json` was restored; the working tree contains only the intended files. No `.env`, `.env.local`, key, token, or password is staged or committed.
+
+### Remaining physical-device gate
+
+An actual Supabase sign-in with real credentials on the physical Android device cannot be replayed from this machine. On device: restart Metro as above, open the dev client, then verify (a) a bad password shows "Invalid email or password" and stays on Sign In; (b) Create Account shows the verification-required panel instead of silently returning; (c) after verifying the e-mail, sign-in reaches Home; (d) killing and relaunching the app restores the session straight to Home; (e) logout returns to Welcome and sign-in works again without a restart.
