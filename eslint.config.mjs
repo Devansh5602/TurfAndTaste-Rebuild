@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/coverage/**',
       '**/.expo/**',
+      '**/.vercel/**',
       '**/android/**',
       '**/ios/**',
       'apps/web/next-env.d.ts',

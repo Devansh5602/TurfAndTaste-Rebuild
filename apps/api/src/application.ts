@@ -1,9 +1,10 @@
 import cors from 'cors';
-import express, { type Express, type Request } from 'express';
-import rateLimit from 'express-rate-limit';
-import helmet from 'helmet';
-import pino from 'pino';
-import pinoHttp from 'pino-http';
+import express, { type Express, type Request, type RequestHandler } from 'express';
+import { rateLimit } from 'express-rate-limit';
+import type { HelmetOptions } from 'helmet';
+import { createRequire } from 'node:module';
+import { pino } from 'pino';
+import { pinoHttp } from 'pino-http';
 import type { ApiEnv } from './config/env';
 import { errorHandler } from './middleware/error-handler';
 import { notFound } from './middleware/not-found';
@@ -11,6 +12,12 @@ import { requestId } from './middleware/request-id';
 import { healthRouter } from './routes/health';
 import { createV1Router } from './routes/v1';
 import { createSupabaseAdmin } from './db/supabase';
+
+// Helmet's runtime CommonJS export is callable, but its conditional declarations are
+// interpreted as a namespace by Vercel's function tracer. Load that documented CJS
+// entry explicitly so both the regular compiler and the tracer see one callable shape.
+const require = createRequire(import.meta.url);
+const helmet = require('helmet') as (options?: Readonly<HelmetOptions>) => RequestHandler;
 
 export function createApp(env: ApiEnv): Express {
   const app = express();

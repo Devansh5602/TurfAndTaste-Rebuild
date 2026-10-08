@@ -3,7 +3,6 @@ import {
   BOOKING_DURATION_HOURS,
   FACILITY_KEYS,
   type AddOnKey,
-  type BookingDurationHours,
   type FacilityKey,
 } from '@turf-and-taste/types';
 import { z } from 'zod';
@@ -66,13 +65,7 @@ export function assertAddOnAllowed(facilityKey: FacilityKey, addOnKey: AddOnKey)
   return false;
 }
 
-export interface QuoteSelection {
-  facilityKey: FacilityKey;
-  date: string;
-  startTime: string;
-  durationHours: BookingDurationHours;
-  addOnKey?: AddOnKey;
-}
+export type QuoteSelection = z.infer<typeof quoteSelectionSchema>;
 
 export function quoteMatchesSelection(quote: QuoteSelection, selection: QuoteSelection): boolean {
   return (
@@ -96,11 +89,7 @@ export const paymentOrderStatusSchema = z.enum([
   'refunded',
 ]);
 
-export const paymentStatusSchema = z.enum([
-  'captured',
-  'failed',
-  'refunded',
-]);
+export const paymentStatusSchema = z.enum(['captured', 'failed', 'refunded']);
 
 export const createPaymentOrderSchema = z.object({
   // The server derives the payable amount from the booking's quoted total.
