@@ -503,3 +503,41 @@ A diff-focused credential scan found no embedded Supabase service key, Razorpay 
 The branch workflow had an obsolete `version: 12.8.1` input on `pnpm/action-setup@v4`, conflicting with the root `packageManager: pnpm@10.34.6`. Commit `9b9332c` removed the workflow override, making `package.json` the single pnpm version source. The resulting run progressed beyond setup and exposed a genuine clean-run test isolation defect: `src/index.test.ts` only stubbed some API variables, so inherited empty CI variables failed `readEnv`. Commit `40c7b47` stubs the complete API environment used by the serverless-entry test; no secret or production value is involved.
 
 Local execution of the exact workflow sequence passed: frozen install, lint, typecheck, tests, web build, API build, and mobile TypeScript check. GitHub Actions run `37739001875` for `40c7b47ae8a4593ec2f76546cef212d6aadb9e05` completed successfully in 1m13s with every workflow step green. The runner emitted only GitHub platform advisories about action Node 20 compatibility and the future `ubuntu-latest` migration; neither is a repository failure.
+
+## Public Preview end-to-end validation checkpoint — 2026-10-08
+
+### Deployment and public reads
+
+Vercel Deployment Protection was disabled for the API Preview project by the user. No bypass header or Vercel-authenticated client is now required. Deployment `dpl_AAKhD1Bc19DjBqzZdcSJZdB3MUMr` remains **Ready** at:
+
+`https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app`
+
+Direct public checks returned 200 for `/health`, `/api/v1/facilities`, the Box Cricket and Cricket Green Net facility details, Box Cricket weekly schedule, and Box Cricket pricing. Responses used the API envelope and request IDs. The facilities, schedule, pricing, and add-on reads came from hosted Supabase, confirming remote database connectivity. The facility list contained exactly the four base facilities; the fifth authorized service remains Cricket Green Net Practice with the Shooting Machine add-on. No unauthorized sport appeared.
+
+### Authentication and booking boundary
+
+Without a bearer token, availability, quote creation, booking creation/list/detail, profile read/update, payment-order creation/read, payment verification, and Razorpay key retrieval all returned 401 `UNAUTHENTICATED` rather than infrastructure errors. No safe Preview customer credential was available, so authenticated remote availability/quote/booking/order/verification success paths were not exercised and no hosted booking or payment row was intentionally created.
+
+The passing schema, booking, and payment suites continue to cover authorized facility/duration validation, unavailable and past slots, quote-selection integrity, server-derived pricing and payment amounts, ownership, provider order/amount/capture checks, signature verification, and retry/idempotency behavior. Vercel module changes introduced no business-logic change.
+
+### CORS and mobile readiness
+
+The configured `WEB_ORIGIN` is an HTTPS public origin (not localhost or private LAN). A request from that exact origin returned 200 with the exact `Access-Control-Allow-Origin`; its quote-route preflight returned 204. Neither response enabled credentialed wildcard CORS. A disallowed origin was rejected with no allow-origin header. Originless HTTPS requests continue to work for native Android and provider callbacks, so Customer Mobile can use the Preview URL as `EXPO_PUBLIC_API_URL`.
+
+### Razorpay TEST readiness
+
+The public webhook route is reachable: requests without a signature return 400 `MISSING_SIGNATURE`, and a forged signature returns 400 `INVALID_WEBHOOK_SIGNATURE`. The exact TEST webhook URL is:
+
+`https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app/api/v1/payments/webhook/razorpay`
+
+The implementation preserves raw bytes, verifies HMAC-SHA256 with the server-only webhook secret, acknowledges unknown provider orders without writes, applies captured/failed/refunded outcomes, shares idempotent persistence with callback verification, and never downgrades a paid order. Automated tests cover valid signed captured and failed events, duplicate captured delivery, callback/webhook replay, forged bytes, ownership, server-side amount derivation, captured-state enforcement, and amount/order matching. Static inspection confirms the refunded switch path uses the same outcome function.
+
+A valid signed event was not sent remotely because Vercel marks the deployed webhook variable Sensitive and does not expose its value through the available CLI; the local encrypted environment value must not be assumed to equal the deployed value. This avoids rotating or disclosing a credential. Complete the remote valid-signature/event delivery check from the Razorpay TEST dashboard after entering the same secret configured in Vercel. Subscribe to `payment.captured`, `payment.failed`, and `payment.refunded`; keep TEST mode and automatic capture enabled. A real TEST checkout still requires a real Preview customer session/device interaction.
+
+### Security and validation
+
+No source change was needed. Root lint, typecheck, tests, and build passed; API typecheck, 44 tests, and build passed; the mobile TypeScript check passed; and `git diff --check` passed. The client build scan found no privileged credential names. Generated Vercel output contains only expected server-side environment references, not committed values. Tracked client environments remain public-prefixed/encrypted, and the API security test passed. Secret values were neither printed nor added to the diff.
+
+GitHub Actions run `37739172260` remains green for implementation HEAD `40e630eee7f0cf30fdc21d5c5fdbbf2c65ecc24a`. This documentation checkpoint is the only repository change from the public validation.
+
+Remaining manual work: configure the URL and three events in the Razorpay TEST dashboard using the same webhook secret as Vercel; confirm TEST automatic capture; obtain a legitimate Preview customer session; then run authenticated availability → quote → booking → TEST order → checkout → verification and repeat/inspect webhook deliveries. Do not use live credentials or real money.
