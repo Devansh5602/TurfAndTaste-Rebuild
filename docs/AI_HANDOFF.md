@@ -605,3 +605,56 @@ Root lint, typecheck, tests, and build passed; API typecheck, 44 tests, and buil
 ### Remaining physical-device gate
 
 An actual Supabase sign-in with real credentials on the physical Android device cannot be replayed from this machine. On device: restart Metro as above, open the dev client, then verify (a) a bad password shows "Invalid email or password" and stays on Sign In; (b) Create Account shows the verification-required panel instead of silently returning; (c) after verifying the e-mail, sign-in reaches Home; (d) killing and relaunching the app restores the session straight to Home; (e) logout returns to Welcome and sign-in works again without a restart.
+
+## Email confirmation deep-link repair checkpoint — 2026-10-08
+
+- Starting HEAD: `cd6f38b` on `feature/customer-mobile-payments` (local == origin at start); working tree restored to clean by reverting the Expo `tsconfig.json` rewrite from the previous QA session.
+- Commit added by this checkpoint: `e1176ce fix(auth): complete mobile email confirmation callback`.
+- The `docs:` commit that pins this block records itself by message only; `git rev-parse HEAD` is authoritative for the tip.
+
+### Root causes
+
+1. **Why the confirmation e-mail resolved to `http://localhost:3000`:** `supabase.auth.signUp()` and `supabase.auth.resend()` supplied no `options.emailRedirectTo`, so GoTrue fell back to the project Site URL. The observed `localhost:3000/#error=...` redirect proves the dashboard Site URL is still the Supabase CLI default `http://localhost:3000`. The app also had no deep-link handler of any kind (no `Linking`, no callback route, no `setSession`/`exchangeCodeForSession` from a URL — grep across the repo found none).
+2. **Why `otp_expired`:** GoTrue answers a verify link whose token it cannot accept with `#error=access_denied&error_code=otp_expired` ("Email link is invalid or has expired") — this covers genuinely expired tokens, tokens superseded by a newer sign-up/resend (the stored confirmation token is single-valued), and already-consumed tokens. The error was produced by GoTrue itself, so the click did reach Supabase; there is no evidence of URL mangling upstream. Which of the three applied in QA cannot be resolved without Supabase logs; the leading hypotheses are (a) a superseding sign-up/resend, (b) consumption by an inbox link scanner/prefetch, (c) expiry past the dashboard-configured e-mail OTP window. The read-only `/auth/v1/settings` probe exposes no OTP-expiry field, so that value is dashboard-only.
+
+### Programmatic verification (read-only)
+
+`GET /auth/v1/settings` (anon key) returns: `mailer_autoconfirm: false` (confirmation required — unchanged, not weakened), `disable_signup: false`, e-mail provider enabled, all OAuth providers disabled. It exposes **no** Site URL, redirect allowlist, or OTP expiry — those are dashboard-only, hence the checklist below.
+
+### Repair (architecture, not a patch)
+
+- New `src/auth/authCallback.ts`: canonical redirect constants (`MOBILE_AUTH_CALLBACK_URL = turfandtaste://auth/callback`, `MOBILE_RESET_REDIRECT_URL`), a side-effect-free parser (implicit `#access_token`/`#refresh_token`, PKCE `?code=`, GoTrue error redirects, malformed/partial-token rejection), and `establishAuthCallbackSession()` which ignores non-callback URLs and callbacks arriving while already signed in, exchanges tokens with `setSession`/`exchangeCodeForSession`, and maps every failure to user-safe copy. Only code/name diagnostics are logged — never tokens or raw error text.
+- `AuthProvider` subscribes to `Linking.getInitialURL()` + `Linking.addEventListener('url')` and drives an `emailConfirmation` state machine (`idle → processing → session | invalid → signInEntry`); every edge is an explicit event or user action, so there is no redirect loop. Sign-up and resend both send `emailRedirectTo: MOBILE_AUTH_CALLBACK_URL`; the reset redirect literal was centralized to the same module (value unchanged).
+- `RootNavigator` renders `Completing verification...` while processing and a new `AuthCallbackScreen` when invalid (branded `Verification link expired or invalid`, Resend verification email when the pending address is known, Back to Sign In which remounts the auth stack with `initialRouteName="SignIn"`). A session always wins the root choice, so a stale callback can never kick a signed-in customer out.
+- The pending verification address is stored in SecureStore on sign-up and cleared on any established session, so Resend works after the OS kills the app and the link is tapped later.
+- Sign-in error copy normalized in `authErrors.ts`: `Invalid email or password.` / `Please verify your email before signing in.` / `Your verification link has expired or is invalid. Request a new one.` / `Unable to connect. Check your internet connection and try again.` / `Too many attempts. Please wait and try again.` / per-action generic fallback.
+- Decision recorded in `docs/DECISIONS.md` (ADR 017): the provider owns the deep link rather than React Navigation's `linking` prop, because GoTrue's implicit redirect carries tokens in the URL and navigation state must never hold them.
+
+### Supabase Dashboard configuration checklist (manual — cannot be changed from here)
+
+1. **Authentication → URL Configuration → Site URL:** set to the canonical deployed web URL `https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app` (currently `http://localhost:3000`, the CLI default — this is what the QA e-mail fell back to). Do not replace it with localhost again; when a production domain exists, revisit.
+2. **Authentication → URL Configuration → Redirect URLs:** add exactly `turfandtaste://auth/callback`. Keep any existing entries; add `http://localhost:3000/**` only if local web testing needs it. Development-only entries are optional and separate from production.
+3. **Authentication → Emails → Confirm signup template:** confirm it uses `{{ .ConfirmationURL }}` (the Supabase default). `{{ .ConfirmationURL }}` carries the `emailRedirectTo` supplied at sign-up, which is now the mobile callback. If the template was customized to embed `{{ .SiteURL }}` directly, change it back to `{{ .ConfirmationURL }}` — otherwise `emailRedirectTo` is ignored and links regress to the Site URL. No template change is needed if it is still the default.
+4. **Do not** enable "Confirm email" changes that auto-confirm, do not disable e-mail confirmation, and do not touch unrelated OAuth settings.
+5. Optional diagnostics: **Authentication → Emails → e-mail OTP expiry** — note the current value before changing anything; expiry shortening masks nothing and is not part of this repair.
+
+### Link-prefetch analysis (recorded, not claimed)
+
+Mailbox link prefetch/scanning can consume a one-time GET verify link before the user clicks (plausible, unproven for this QA run; YOPmail or another intermediary was suspected but cannot be verified from this machine). Supabase-supported production mitigations if this recurs: a manual e-mail OTP/code the customer types (never fetched as a URL), or a custom `{{ .TokenHash }}` verification page whose exchange is a POST that prefetchers do not perform. Neither was adopted — the confirmation architecture is unchanged.
+
+### Validation
+
+- Workspace typecheck (9 turbo tasks), root lint, `pnpm test` (mobile **88** tests / 7 suites, API **53** tests incl. `security.test.ts`) all pass; touched files pass `prettier --check`; `git diff --check` clean.
+- Metro restarted with `cd apps/mobile && npx expo start --dev-client --clear --tunnel`; the Android bundle returned HTTP 200 (12,945,303 bytes, 2,189 modules bundled). Bundle scan: `turfandtaste://auth/callback` present, `sb_publishable_` key only, zero JWTs, zero `DOTENV_KEY`, no `localhost:3000`, no raw `Invalid login credentials` text; every `sb_secret_`/`service_role` match is the validator's rejection literal (bare 10-char pattern, no key material). `npx expo config --type public` reports `scheme: 'turfandtaste'`.
+- **No dev-client rebuild:** the Expo scheme `turfandtaste` exists since the bootstrap commit `1ec1c07` and was already present at the native readiness build `914dbb6`, so the installed Android dev client already registers the `turfandtaste` intent filter. This repair changed only `.ts`/`.tsx` files — no app.json/manifest change — therefore JS-only, no regeneration.
+- Tests added: `authCallback.test.ts` (canonical URI tied to app.json scheme, URL classification, implicit/PKCE/error parsing, session establishment, expired/malformed/network mappings, authenticated-ignore, no-token-logging); `AuthContext.test.tsx` (sign-up and resend carry the same `emailRedirectTo`, deep-link success/expiry/dismiss/ignore paths, warm arrival, pending-address lifecycle); `RootNavigator.test.tsx` (callback exchanges to Home behind the processing state, expired state with resend and loop-free Back to Sign In, no-pending-address variant, signed-in customer untouched by a stale link, warm arrival).
+
+### Physical-device retest procedure (user-owned gate)
+
+1. `cd apps/mobile && npx expo start --dev-client --clear --tunnel`
+2. Create Account with a real inbox → panel "Verification required" appears.
+3. Open the confirmation e-mail **on the device** → the app must open (not a browser) and land on Home once the session is established.
+4. If the link is expired/invalid: the app must show "Verification link expired or invalid" with Resend verification email and Back to Sign In — no crash, no silent navigation.
+5. Sign in with a wrong password → "Invalid email or password."; with an unverified account → "Please verify your email before signing in."
+6. Kill and relaunch → straight to Home; logout → Welcome → sign in again without restart.
+7. Verify the Supabase dashboard checklist above **before** step 3 — without it, the e-mail still targets `localhost:3000`.

@@ -121,3 +121,13 @@ Status: accepted
 The repository pins pnpm 10.34.6, the newest stable pnpm 10 release available when this decision was recorded. Vercel's current package-manager reference supports pnpm through major 10 and explicitly accepts lockfile format 9.0 with pnpm 10. With `ENABLE_EXPERIMENTAL_COREPACK=1`, Vercel reads the exact root `packageManager` pin instead of selecting from the lockfile alone.
 
 The compatibility change does not alter the workspace structure or application dependencies. pnpm 10 consumes the existing version-9 lockfile; the only lockfile normalization removes pnpm 12's embedded package-manager wrapper preamble. Catalogs, `workspace:*` links, the hoisted node linker, `minimumReleaseAgeExclude`, Expo alignment, and security exclusions remain intact.
+
+## ADR 017 — Provider-owned e-mail confirmation deep links
+
+Status: accepted
+
+The e-mail confirmation callback (`turfandtaste://auth/callback`) is handled by the auth provider through Expo Linking, not by React Navigation's `linking` prop. `AuthProvider` subscribes to `Linking.getInitialURL()`/`Linking.addEventListener('url')`, parses the URL in `src/auth/authCallback.ts`, and either calls `supabase.auth.setSession`/`exchangeCodeForSession` or enters a branded recoverable state. React Navigation's root guard (`RootNavigator`) renders that state; no second router was introduced.
+
+The deciding constraint is token hygiene: GoTrue's implicit-flow redirect carries `#access_token`/`#refresh_token` in the URL. Passing such URLs through React Navigation's linking would place tokens into navigation state, where they surface in navigation state dumps and devtools. The provider path keeps tokens inside the auth layer, where only code/name diagnostics are ever logged.
+
+The redirect target is a single constant (`MOBILE_AUTH_CALLBACK_URL`) shared by sign-up, resend, and the parser, so the Supabase dashboard Redirect URL allowlist has exactly one deep-link entry to match. The Expo `scheme` (`turfandtaste`) predates the Android dev client build, so the callback is JS-only: no new intent filters, no native rebuild.
