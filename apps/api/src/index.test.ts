@@ -4,9 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 async function loadVercelApp() {
   vi.stubEnv('NODE_ENV', 'test');
+  vi.stubEnv('PORT', '4000');
+  vi.stubEnv('LOG_LEVEL', 'silent');
   vi.stubEnv('WEB_ORIGIN', 'https://preview.example.com');
   vi.stubEnv('SUPABASE_URL', 'http://localhost:54321');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-key');
+  vi.stubEnv('RAZORPAY_KEY_ID', 'test-key-id');
+  vi.stubEnv('RAZORPAY_KEY_SECRET', 'test-key-secret');
   vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'test-webhook-secret');
   vi.resetModules();
 
