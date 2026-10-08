@@ -1,4 +1,4 @@
-export { healthDataSchema, healthResponseSchema } from './health';
+export { healthDataSchema, healthResponseSchema } from './health.ts';
 export {
   UNAUTHORIZED_SPORTS,
   addOnKeySchema,
@@ -20,18 +20,18 @@ export {
   quoteSelectionSchema,
   razorpayKeyResponseSchema,
   verifyPaymentSchema,
-} from './product';
+} from './product.ts';
 export type {
   CreatePaymentOrderInput,
   Payment,
   PaymentOrder,
   QuoteSelection,
   VerifyPaymentInput,
-} from './product';
+} from './product.ts';
 export {
   BUSINESS_TIME_ZONE,
   businessDate,
   businessDateTime,
   businessTime,
   businessWeekday,
-} from './time';
+} from './time.ts';

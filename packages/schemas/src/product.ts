@@ -4,7 +4,7 @@ import {
   FACILITY_KEYS,
   type AddOnKey,
   type FacilityKey,
-} from '@turf-and-taste/types';
+} from '../../types/src/index.ts';
 import { z } from 'zod';
 
 export const facilityKeySchema = z.enum(FACILITY_KEYS);

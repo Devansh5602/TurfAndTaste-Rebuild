@@ -1,4 +1,4 @@
-import { PROPERTY } from '@turf-and-taste/types';
+import { PROPERTY } from '../../types/src/index.ts';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 export const BUSINESS_TIME_ZONE = PROPERTY.timeZone;

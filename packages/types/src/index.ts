@@ -6,6 +6,13 @@ export {
   FACILITY_KEYS,
   FACILITY_LABELS,
   PROPERTY,
-} from './property';
-export type { AddOnKey, AuthDomain, BookingDurationHours, FacilityKey } from './property';
-export type { ApiErrorBody, ApiFailure, ApiMeta, ApiResponse, ApiSuccess, HealthData } from './api';
+} from './property.ts';
+export type { AddOnKey, AuthDomain, BookingDurationHours, FacilityKey } from './property.ts';
+export type {
+  ApiErrorBody,
+  ApiFailure,
+  ApiMeta,
+  ApiResponse,
+  ApiSuccess,
+  HealthData,
+} from './api.ts';
