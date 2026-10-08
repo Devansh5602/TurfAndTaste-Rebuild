@@ -1,12 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { BookingDurationHours, FacilityKey } from '@turf-and-taste/types';
-import type { QuoteSelection } from '@turf-and-taste/schemas';
+import type { BookingDurationHours, FacilityKey } from '../../../../packages/types/src/index.js';
+import type { QuoteSelection } from '../../../../packages/schemas/src/index.js';
 import {
   businessDate,
   businessDateTime,
   businessTime,
   quoteSelectionSchema,
-} from '@turf-and-taste/schemas';
+} from '../../../../packages/schemas/src/index.js';
 import { HttpError } from '../errors/http-error.js';
 import type { AvailabilityService, FacilitiesService, PricingService } from './domain.js';
 

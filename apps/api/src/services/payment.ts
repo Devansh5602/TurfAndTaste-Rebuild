@@ -193,7 +193,11 @@ export class PaymentService {
 
     // The captured amount must match the server-side quoted amount.
     if (payment.amount !== orderRow.amount_paise || payment.currency !== orderRow.currency) {
-      throw new HttpError(400, 'AMOUNT_MISMATCH', 'Payment amount does not match the booking quote.');
+      throw new HttpError(
+        400,
+        'AMOUNT_MISMATCH',
+        'Payment amount does not match the booking quote.',
+      );
     }
 
     // The booking must belong to the calling customer.

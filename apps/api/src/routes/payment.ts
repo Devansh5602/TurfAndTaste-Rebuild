@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   createPaymentOrderSchema,
   verifyPaymentSchema,
-} from '@turf-and-taste/schemas';
+} from '../../../../packages/schemas/src/index.js';
 import { parseInput } from '../utils/validate.js';
 import { currentRequestId } from '../middleware/request-id.js';
 import { success } from '../utils/response.js';
@@ -39,13 +39,19 @@ export function createPaymentRoutes(paymentService: PaymentService) {
         throw new HttpError(401, 'UNAUTHORIZED', 'Authentication required.');
       }
 
-      const bookingId = Array.isArray(req.params.bookingId) ? req.params.bookingId[0] : req.params.bookingId;
+      const bookingId = Array.isArray(req.params.bookingId)
+        ? req.params.bookingId[0]
+        : req.params.bookingId;
       if (!bookingId) {
         throw new HttpError(400, 'INVALID_BOOKING_ID', 'Booking ID is required.');
       }
       const order = await paymentService.getPaymentOrder(bookingId, req.user.id);
       if (!order) {
-        throw new HttpError(404, 'PAYMENT_ORDER_NOT_FOUND', 'No payment order found for this booking.');
+        throw new HttpError(
+          404,
+          'PAYMENT_ORDER_NOT_FOUND',
+          'No payment order found for this booking.',
+        );
       }
       res.json(success(order, currentRequestId(res)));
     } catch (error) {

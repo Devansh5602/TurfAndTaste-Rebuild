@@ -6,7 +6,7 @@ import {
   createBookingSchema,
   facilityKeySchema,
   quoteSelectionSchema,
-} from '@turf-and-taste/schemas';
+} from '../../../../packages/schemas/src/index.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { HttpError } from '../errors/http-error.js';
 import { requireAuth, requireDomain, type AuthenticatedRequest } from '../middleware/auth.js';

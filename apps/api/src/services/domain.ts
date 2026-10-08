@@ -1,11 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { BookingDurationHours, FacilityKey } from '@turf-and-taste/types';
+import type { BookingDurationHours, FacilityKey } from '../../../../packages/types/src/index.js';
 import {
   allowsShootingMachine,
   businessDateTime,
   businessTime,
   businessWeekday,
-} from '@turf-and-taste/schemas';
+} from '../../../../packages/schemas/src/index.js';
 import { HttpError } from '../errors/http-error.js';
 
 export interface Facility {

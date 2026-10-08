@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { HttpError } from '../errors/http-error.js';
 import { createSupabaseAdmin, createSupabaseClient } from '../db/supabase.js';
 import type { ApiEnv } from '../config/env.js';
-import type { AuthDomain } from '@turf-and-taste/types';
+import type { AuthDomain } from '../../../../packages/types/src/index.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {

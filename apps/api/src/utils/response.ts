@@ -1,4 +1,4 @@
-import type { ApiFailure, ApiSuccess } from '@turf-and-taste/types';
+import type { ApiFailure, ApiSuccess } from '../../../../packages/types/src/index.js';
 
 export function success<T>(data: T, requestId: string): ApiSuccess<T> {
   return { data, error: null, meta: { requestId } };
