@@ -658,3 +658,143 @@ Mailbox link prefetch/scanning can consume a one-time GET verify link before the
 5. Sign in with a wrong password → "Invalid email or password."; with an unverified account → "Please verify your email before signing in."
 6. Kill and relaunch → straight to Home; logout → Welcome → sign in again without restart.
 7. Verify the Supabase dashboard checklist above **before** step 3 — without it, the e-mail still targets `localhost:3000`.
+
+## DEVICE HANDOFF CHECKPOINT — CUSTOMER MOBILE — 2026-10-08
+
+Checkpoint purpose: preserve and push the verified customer-mobile state so development can continue from another physical machine. No new feature work, no screen redesign, no booking/payment changes were made in this checkpoint.
+
+### Repository and refs
+
+- Repository path (this machine): `/home/pc/www/POC/TurfAndTaste-Rebuild`
+- Remote: `github.com:Devansh5602/TurfAndTaste-Rebuild.git`
+- Branch: `feature/customer-mobile-payments`
+- Code HEAD at checkpoint open: `242e796` (local == `origin/feature/customer-mobile-payments` after `git fetch`)
+- This docs commit records itself by message only; `git rev-parse HEAD` is authoritative for the tip.
+- Working tree: clean except intentionally ignored private/generated files (`.env.local`, `.env.keys`, `.expo/`, `apps/mobile/android/`, `node_modules/`, `dist/`, `coverage/`).
+
+### Current architecture summary
+
+- Turborepo workspace: `apps/mobile` (Expo SDK 57 / React Native development build, React Navigation native stack, NativeWind, TanStack Query, `expo-secure-store` session storage), `apps/api` (Express with a serverless Vercel entry `apps/api/src/index.ts`), `apps/web`, and shared `packages/` (`ui-native`, `design-tokens`, `types`, `api-client`).
+- Customer auth is provider-owned: `AuthProvider` (`apps/mobile/src/context/AuthContext.tsx`) is the single source of truth — hydration-only `loading`, `onAuthStateChange` subscription, deep-link handling through Expo Linking. `RootNavigator` is a pure route guard: while `loading`, show session restore; then the session alone swaps whole navigators (`CustomerNavigator` initial route Home, `AuthNavigator` initial route Welcome).
+- Confirmation deep links are handled by the provider, never by a navigation `linking` prop, so tokens never enter navigation state (ADR 017 in `docs/DECISIONS.md`). Safe error copy is centralized in `apps/mobile/src/auth/authErrors.ts`; redirect constants and the callback parser live in `apps/mobile/src/auth/authCallback.ts`.
+
+### Working auth / deep-link flow (verified on physical device)
+
+Create Account → `supabase.auth.signUp` with `options.emailRedirectTo = turfandtaste://auth/callback` → explicit "Verification required" panel (Resend + Continue to Sign In) → confirmation e-mail opens `turfandtaste://auth/callback` on the device → provider parses (implicit `#access_token` pair or PKCE `?code`, error redirects fail closed) → `setSession`/`exchangeCodeForSession` → session established → route guard swaps to the customer navigator → Home. Expired/invalid/malformed links land on the branded recoverable state (`Verification link expired or invalid` with Resend verification email when the pending address is known, and Back to Sign In) — no crash, no silent navigation, no redirect loop. The pending verification address persists in SecureStore across restarts and clears on any established session.
+
+Supabase dashboard prerequisites for this flow (Site URL, Redirect URL `turfandtaste://auth/callback`, Confirm-signup template using `{{ .ConfirmationURL }}`) are listed in the "Email confirmation deep-link repair checkpoint" section above and must be confirmed on the dashboard; they cannot be changed from code.
+
+### Exact current customer mobile routes
+
+Auth navigator (`AuthStackParamList`): `Welcome`, `SignIn`, `CreateAccount`, `ForgotPassword`.
+Customer navigator (`CustomerStackParamList`): `Home`, `Facilities`, `FacilityDetail`, `Booking`, `MyBookings`, `BookingDetail`, `Payment`, `Profile`.
+
+### Current Supabase integration status
+
+- Customer authentication works on the physical device: account creation, verification e-mail delivery, `turfandtaste://auth/callback` confirmation, authenticated session entry, and session/profile recognition of the authenticated customer are all observed working.
+- Project settings (read-only probe): `mailer_autoconfirm: false` (e-mail confirmation required — deliberately unchanged), `disable_signup: false`, e-mail provider on, OAuth providers off.
+- Client uses only public credentials (publishable/anon key) from `EXPO_PUBLIC_SUPABASE_*` variables; no service-role or secret key exists anywhere in the mobile bundle (scanned).
+
+### Backend / API status
+
+- Express app with shared `createApp(readEnv())`, serverless entry `apps/api/src/index.ts`, hosted Node entry `apps/api/src/server.ts`. Vercel Express Preview deployment exists at `https://turf-and-taste-rebuild-cwfls3e7s-devansh5602.vercel.app` (Preview/test-only, no production deployment authorized).
+- Staff auth middleware (customer/admin isolation), health, CORS, booking, payment verification, idempotency, and webhook signature paths are covered by the API test suite (53 tests incl. `security.test.ts`).
+
+### Booking / availability status
+
+Unresolved on device: the Booking screen's availability request currently ends in "Availability unavailable", so the customer cannot complete the booking journey. This is the top next-priority defect (P0 below). No fix has been attempted in this checkpoint.
+
+### Payment status
+
+Server-side Razorpay TEST integration is complete and tested (order creation, signature verification, idempotent capture handling, webhook signature verification over raw bytes; TEST webhook dashboard configuration documented in earlier checkpoints). `PaymentScreen` exists in the customer stack. The end-to-end physical-device payment journey is not certified; no live keys and no production deployment.
+
+### Profile status
+
+`Profile` route exists; the authenticated customer's session/profile is recognized on device. No profile-feature expansion has been done.
+
+### Figma / design status
+
+Current screens are basic engineering UI and do not yet match the approved design. Authoritative design reference for the next device:
+
+- Figma: **Turf & Taste — Mobile App UI/UX Master**
+- File: `https://www.figma.com/design/yUBIZk5ptihZqROIobT6S4/Turf---Taste-%E2%80%94-Mobile-App-UI-UX-Master`
+- Relevant supplied node: **`63:2`**
+
+Design work in the next phase must audit the actual Figma system before inventing or modifying visual primitives.
+
+### Tests / build status
+
+- `pnpm typecheck` (9 turbo tasks) green; root `pnpm lint` green; `pnpm test` green — mobile 88 tests (7 suites) and API 53 tests, 141 total.
+- Android bundle validated at this state: HTTP 200 with the canonical callback present, publishable key only, zero JWTs, zero `DOTENV_KEY`, no raw server error text, no `localhost:3000`.
+- `git diff --check` clean. `pnpm format:check` still reports the 29 pre-existing untouched files documented earlier; every touched file passes `prettier --check`.
+
+### Known physical-device issues (observed, NOT fixed here)
+
+1. Facility/Home data may take too long to load.
+2. Facility Detail navigation/loading is slow.
+3. Booking screen availability request ends in "Availability unavailable".
+4. The customer cannot currently complete the full booking journey.
+5. Current screens are still basic engineering UI and do not yet match the approved Figma quality.
+6. Facility Detail currently displays values such as operating hours/pricing that need backend/product-truth verification.
+7. The full physical-device customer journey has NOT yet been certified complete.
+
+### Next development priorities (record only — do NOT implement in this checkpoint)
+
+P0 — Booking runtime unblock
+
+- trace slow facility/detail loading
+- trace availability request end-to-end
+- verify mobile → API → database path
+- determine whether failure is networking, API URL, authentication, endpoint, schema, availability query, timezone/date handling, CORS, or backend process availability
+- make real available times load on physical Android device
+
+P1 — Full booking flow verification
+Facility → Date → Duration → Available time → Quote → Review → Booking creation → payment test/sandbox flow → confirmation → My Bookings / Pass
+
+P2 — Canonical UI kit / Figma alignment
+Before broadly redesigning screens: audit the existing UI kit; compare it against Figma node `63:2` and the relevant Figma components/styles; consolidate design tokens — typography, spacing, radii, colors, shadows, buttons, inputs, cards, chips, navigation, states, skeletons, feedback/error components, safe areas, themes, accessibility/touch targets. Then migrate Customer Mobile screens onto the canonical system.
+
+P3 — Complete Customer Mobile product UI and remaining modules.
+
+### Required environment variable NAMES (values are private — never committed, never printed)
+
+Mobile (required to run the development client), recreate locally in `apps/mobile/.env.local` (plaintext) or keep using the tracked dotenvx-encrypted `apps/mobile/.env` plus the private `apps/mobile/.env.keys`:
+
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+- `EXPO_PUBLIC_API_URL`
+
+Local API development (only if running `apps/api` on the new machine), names as in `apps/api/.env.example`: `NODE_ENV`, `PORT`, `LOG_LEVEL`, `WEB_ORIGIN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`.
+
+Web (only if running `apps/web`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+The repo's tracked `.env` files contain dotenvx ciphertext only; the decryption keys live in git-ignored `*.env.keys` files that must be copied securely (or the plaintext `.env.local` recreated) on the new machine. Expo tooling also names `DOTENV_PUBLIC_KEY` / `DOTENV_PUBLIC_KEY_LOCAL` (public key material, not secret).
+
+### Fresh-machine resume sequence
+
+```bash
+git clone git@github.com:Devansh5602/TurfAndTaste-Rebuild.git   # or use an existing clone
+cd TurfAndTaste-Rebuild
+git fetch origin
+git checkout feature/customer-mobile-payments
+git pull --ff-only origin feature/customer-mobile-payments
+
+# Node 22 (.node-version) and the pinned pnpm (packageManager: pnpm@10.34.6)
+corepack enable
+pnpm install --frozen-lockfile
+
+# Private environment (choose one):
+#  (a) copy the git-ignored apps/mobile/.env.keys next to the tracked encrypted apps/mobile/.env, or
+#  (b) create apps/mobile/.env.local with EXPO_PUBLIC_SUPABASE_URL,
+#      EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_API_URL (values from your password manager)
+
+# The android/ directory is git-ignored, so regenerate the dev client once per machine
+# (Android SDK + JDK required) — this installs the build that registers the
+# turfandtaste:// scheme used by the confirmation e-mail:
+cd apps/mobile && npx expo run:android && cd ../..
+
+# Start Metro for the physical device:
+cd apps/mobile && npx expo start --dev-client --clear --tunnel
+```
+
+Validation commands on the new machine: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `git diff --check`.
