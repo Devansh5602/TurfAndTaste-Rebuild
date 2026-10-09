@@ -97,10 +97,8 @@ function paymentOrderRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function checkoutSignature(paymentId: string, orderId: string): string {
-  return createHmac('sha256', 'test_key_secret')
-    .update(`${paymentId}|${orderId}`)
-    .digest('hex');
+function checkoutSignature(orderId: string, paymentId: string): string {
+  return createHmac('sha256', 'test_key_secret').update(`${orderId}|${paymentId}`).digest('hex');
 }
 
 beforeEach(() => {
@@ -120,9 +118,7 @@ describe('PaymentService.createOrder', () => {
   it('charges the server-side quoted amount for the owning customer', async () => {
     const { supabase, calls } = createSupabaseMock({
       bookings: [ok(bookingRow())],
-      payment_orders: [
-        ok({ ...paymentOrderRow(), status: 'created' }),
-      ],
+      payment_orders: [ok({ ...paymentOrderRow(), status: 'created' })],
     });
     const service = new PaymentService(supabase, env);
 
@@ -218,7 +214,7 @@ describe('PaymentService.verifyPayment', () => {
     const payment = await service.verifyPayment(
       providerOrderId,
       providerPaymentId,
-      checkoutSignature(providerPaymentId, providerOrderId),
+      checkoutSignature(providerOrderId, providerPaymentId),
       'customer-1',
     );
 
@@ -256,7 +252,7 @@ describe('PaymentService.verifyPayment', () => {
       service.verifyPayment(
         providerOrderId,
         providerPaymentId,
-        checkoutSignature(providerPaymentId, providerOrderId),
+        checkoutSignature(providerOrderId, providerPaymentId),
         'customer-1',
       ),
     ).rejects.toMatchObject({ status: 400, code: 'ORDER_MISMATCH' });
@@ -278,7 +274,7 @@ describe('PaymentService.verifyPayment', () => {
       service.verifyPayment(
         providerOrderId,
         providerPaymentId,
-        checkoutSignature(providerPaymentId, providerOrderId),
+        checkoutSignature(providerOrderId, providerPaymentId),
         'customer-1',
       ),
     ).rejects.toMatchObject({ status: 400, code: 'PAYMENT_NOT_CAPTURED' });
@@ -302,7 +298,7 @@ describe('PaymentService.verifyPayment', () => {
       service.verifyPayment(
         providerOrderId,
         providerPaymentId,
-        checkoutSignature(providerPaymentId, providerOrderId),
+        checkoutSignature(providerOrderId, providerPaymentId),
         'customer-1',
       ),
     ).rejects.toMatchObject({ status: 400, code: 'AMOUNT_MISMATCH' });
@@ -320,7 +316,7 @@ describe('PaymentService.verifyPayment', () => {
       service.verifyPayment(
         providerOrderId,
         providerPaymentId,
-        checkoutSignature(providerPaymentId, providerOrderId),
+        checkoutSignature(providerOrderId, providerPaymentId),
         'someone-else',
       ),
     ).rejects.toMatchObject({ status: 404, code: 'PAYMENT_ORDER_NOT_FOUND' });
@@ -345,11 +341,13 @@ describe('PaymentService.verifyPayment', () => {
     const payment = await service.verifyPayment(
       providerOrderId,
       providerPaymentId,
-      checkoutSignature(providerPaymentId, providerOrderId),
+      checkoutSignature(providerOrderId, providerPaymentId),
       'customer-1',
     );
 
-    expect(calls.filter((call) => call.table === 'payments' && call.op === 'insert')).toHaveLength(0);
+    expect(calls.filter((call) => call.table === 'payments' && call.op === 'insert')).toHaveLength(
+      0,
+    );
     expect(payment).toMatchObject({ id: 'payment-1', status: 'captured' });
   });
 });
@@ -569,4 +567,3 @@ describe('PaymentService.handleWebhook', () => {
     });
   });
 });
-
