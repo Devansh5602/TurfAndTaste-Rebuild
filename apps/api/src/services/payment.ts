@@ -156,9 +156,9 @@ export class PaymentService {
   ): Promise<Payment> {
     const razorpay = this.requireRazorpay();
 
-    // Razorpay signs payment_id|order_id with the key secret on checkout return.
+    // Razorpay signs order_id|payment_id with the key secret on checkout return.
     const expectedSignature = this.generateSignature(
-      `${providerPaymentId}|${providerOrderId}`,
+      `${providerOrderId}|${providerPaymentId}`,
       this.env.RAZORPAY_KEY_SECRET!,
     );
 
