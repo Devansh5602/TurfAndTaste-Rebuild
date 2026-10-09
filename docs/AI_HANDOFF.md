@@ -798,3 +798,46 @@ cd apps/mobile && npx expo start --dev-client --clear --tunnel
 ```
 
 Validation commands on the new machine: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `git diff --check`.
+
+## P0 BOOKING RUNTIME RECOVERY — CUSTOMER MOBILE — 2026-10-09
+
+### Root cause of "Availability unavailable" (fixed)
+
+The device symptom (Available Times loads for a long time, then "Availability unavailable / Check your connection and try again") was **not** a network, URL, token, or Vercel problem. Direct probing proved a fresh valid customer token was rejected with `401 UNAUTHENTICATED` after 10–19 s on every authenticated endpoint. Instrumented middleware showed the real failure:
+
+```
+[auth-diag] getUser ms=413 ok=true
+[auth-diag] customerQuery ms=18326 found=false err=stack depth limit exceeded
+```
+
+**RLS policy recursion:** `customer_profiles_select_staff` and every `*_staff` policy call `staff_has_permission()`, which queries `staff_profiles`; the `staff_profiles` policies call `staff_has_permission()` again — an unbounded cycle that aborts with Postgres `stack depth limit exceeded` (~18 s of stack thrash) whenever the query runs as role `authenticated` (i.e. with the caller's JWT). The middleware's profile lookup therefore always failed and fell through to "no user", so availability, quotes, bookings, payments, and profile all returned 401 while unauthenticated endpoints (facilities, pricing) kept working — exactly matching the device behavior.
+
+**Fix:** migration `20261009000000_rls_helper_recursion_fix.sql` makes `is_staff()`, `is_customer()`, `current_customer_id()`, `current_staff_id()`, and `staff_has_permission()` `SECURITY DEFINER` with a pinned `search_path` and revoked `PUBLIC` execute (they only derive a boolean/uuid from `auth.uid()`, so nothing new is exposed). Applied to the hosted dev project (`rlmuxztkwpwutyepttfe`) with `supabase db push`; the minimal `supabase/config.toml` needed by the CLI is now committed. Verified live: profile lookup dropped from 18,326 ms to 42–74 ms and availability returned 200 with real slots.
+
+### Slow availability (fixed)
+
+`AvailabilityService.listAvailability` called `checkSlotAvailability` per candidate slot; each call re-queried overrides, the schedule, bookings, and pricing — ~4 sequential queries × up to 16 slots (≈64 round trips per request). The batched version fetches schedule, overrides, bookings, and pricing tiers **once** for the day and filters slots in memory with identical semantics (past exclusion, closed overrides, booking overlap, effective pricing tier). `checkSlotAvailability` is unchanged for the quote/booking write paths.
+
+Measured (dev machine → hosted DB / deployed API, 06:00–22:00 day):
+
+| Path                                   | Before            | After                                     |
+| -------------------------------------- | ----------------- | ----------------------------------------- |
+| availability 1h local                  | 5,432 ms          | 1,789 ms cold / 452 ms warm               |
+| availability 2h local                  | 3,507 ms          | 452 ms                                    |
+| availability 1h deployed (new preview) | 401 after 10–19 s | 200, 16 slots, ~2.9–4.2 s (cold function) |
+| availability 2h deployed               | 401               | 200, 15 slots                             |
+| server quote deployed                  | 401               | 201, ₹800 (server-priced)                 |
+
+Vercel function region vs Supabase `ap-south-1` still adds per-request latency (7 DB round trips); moving the function to `bom1` is a recommended follow-up, not applied here.
+
+### Error-state correction (mobile)
+
+`apps/mobile/src/booking/availabilityError.ts` classifies availability failures into NETWORK_ERROR / AUTH_ERROR / SERVER_ERROR / CONFIGURATION_ERROR / INVALID_REQUEST with safe copy and per-category Retry eligibility; `BookingScreen` renders the classified state instead of the old blanket "Availability unavailable", distinguishes NO_AVAILABILITY ("No available times for this date") from failures, logs a token-free `__DEV__` diagnostic line, and stops retrying deterministic 4xx client errors (was: 3 blind retries). The API middleware now emits one safe structured `req.log.warn` when token verification fails — the silent failure that hid this bug for so long.
+
+### Direct API verification (deployed preview, real QA customer)
+
+`GET /api/v1/facilities/box-cricket/availability` → future date + 1h: 200/16 slots; +2h: 200/15 contiguous slots; no token: 401; invalid facility, malformed date, add-on not allowed: 400 with stable error codes; past date: 200 with 0 slots (empty ≠ failure). `POST /api/v1/bookings/quotes` → 201 with server-computed `amountPaise`. The current API Preview deployment is **`https://turf-and-taste-rebuild-ex7hgpld1-devansh5602.vercel.app`** (replaces `cwfls3e7s`; `apps/mobile/.env.local` updated — private file, not committed).
+
+### Remaining on-device certification (user-owned, this machine has no device)
+
+Metro: `cd apps/mobile && npx expo start --dev-client --clear --tunnel`, then on the phone: relaunch (session persists) → Home → Box Cricket → Start Booking → future date → 1h (real slots) → 2h (contiguous only) → Get server quote (₹800/₹1500) → change date (slot + quote clear) → Create booking → My Bookings. No native rebuild needed (TS-only changes). Figma/UI-kit migration (P2) is still the next separate phase.
