@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,6 +26,10 @@ import {
 } from '@turf-and-taste/ui-native';
 import { Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import {
+  availabilityErrorView,
+  describeAvailabilityErrorForDevLogs,
+} from '../../booking/availabilityError';
 import type { CustomerStackScreenProps } from '../../navigation/types';
 
 type BookingRoute = CustomerStackScreenProps<'Booking'>['route'];
@@ -84,6 +88,11 @@ export function BookingScreen() {
         ),
       enabled: supportedDurations.includes(durationHours),
       staleTime: 0,
+      // Deterministic client errors (validation, auth, unknown facility) will not
+      // change on retry; retry only transport/server failures, at most twice.
+      retry: (failureCount, error) =>
+        !(error instanceof ApiClientError && [400, 401, 403, 404, 422].includes(error.status)) &&
+        failureCount < 2,
     }),
   );
 
@@ -228,17 +237,10 @@ export function BookingScreen() {
               <Skeleton />
             </View>
           ) : availabilityQuery.isError ? (
-            <View className="gap-3">
-              <ErrorState
-                title="Availability unavailable"
-                description="Check your connection and try again."
-              />
-              <Button
-                variant="outline"
-                label="Retry"
-                onPress={() => void availabilityQuery.refetch()}
-              />
-            </View>
+            <AvailabilityErrorState
+              error={availabilityQuery.error}
+              onRetry={() => void availabilityQuery.refetch()}
+            />
           ) : availabilityQuery.data?.slots.length ? (
             <View className="flex-row flex-wrap gap-2">
               {availabilityQuery.data.slots.map((slot) => (
@@ -255,7 +257,7 @@ export function BookingScreen() {
             </View>
           ) : (
             <EmptyState
-              title="No available times"
+              title="No available times for this date"
               description="Try another date, duration, or option."
             />
           )}
@@ -368,6 +370,21 @@ function LoadingBooking() {
         <Skeleton className="h-40" />
       </View>
     </SafeAreaView>
+  );
+}
+function AvailabilityErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  useEffect(() => {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn(describeAvailabilityErrorForDevLogs(error));
+    }
+  }, [error]);
+  const view = availabilityErrorView(error);
+  return (
+    <View className="gap-3">
+      <ErrorState title={view.title} description={view.description} />
+      {view.canRetry ? <Button variant="outline" label="Retry" onPress={onRetry} /> : null}
+    </View>
   );
 }
 function nextBusinessDate(offset: number) {
