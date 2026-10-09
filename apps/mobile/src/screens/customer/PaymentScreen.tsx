@@ -43,7 +43,7 @@ const ORDER_STATUS_BADGE: Record<
   PaymentOrder['status'] | 'none',
   { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info' }
 > = {
-  none: { label: 'No payment order', variant: 'default' },
+  none: { label: 'Ready for payment', variant: 'info' },
   created: { label: 'Awaiting payment', variant: 'warning' },
   paid: { label: 'Paid', variant: 'success' },
   failed: { label: 'Failed', variant: 'danger' },
@@ -119,8 +119,11 @@ export function PaymentScreen() {
   });
 
   const verifyPaymentMutation = useMutation({
-    mutationFn: (input: { providerOrderId: string; providerPaymentId: string; signature: string }) =>
-      withAuth((url, token) => verifyPayment(url, token, input)),
+    mutationFn: (input: {
+      providerOrderId: string;
+      providerPaymentId: string;
+      signature: string;
+    }) => withAuth((url, token) => verifyPayment(url, token, input)),
     onSuccess: async () => {
       setIsProcessing(false);
       await queryClient.invalidateQueries({ queryKey: ['paymentOrder', bookingId] });
@@ -139,7 +142,6 @@ export function PaymentScreen() {
     },
   });
 
-
   const handleStartPayment = () => {
     if (!bookingIsPayable) {
       return;
@@ -149,8 +151,9 @@ export function PaymentScreen() {
       return;
     }
     setIsProcessing(true);
-    // Reuse an outstanding provider order instead of creating a duplicate.
-    if (paymentOrder && paymentOrder.status === 'created') {
+    // Reuse an outstanding provider order only if the booking is still pending.
+    // If the booking was confirmed (e.g., via webhook), do not reopen checkout.
+    if (paymentOrder && paymentOrder.status === 'created' && bookingIsPayable) {
       launchRazorpayCheckout(paymentOrder);
       return;
     }
@@ -229,7 +232,6 @@ export function PaymentScreen() {
 
   const isBusy = isProcessing || createOrderMutation.isPending || verifyPaymentMutation.isPending;
 
-
   if (keyQuery.isLoading || bookingQuery.isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-background">
@@ -270,7 +272,11 @@ export function PaymentScreen() {
             title="Payment Status Unavailable"
             description="Unable to load the payment status for this booking."
           />
-          <Button variant="outline" label="Retry" onPress={() => void paymentOrderQuery.refetch()} />
+          <Button
+            variant="outline"
+            label="Retry"
+            onPress={() => void paymentOrderQuery.refetch()}
+          />
           <Button
             variant="ghost"
             label="Back to Booking"

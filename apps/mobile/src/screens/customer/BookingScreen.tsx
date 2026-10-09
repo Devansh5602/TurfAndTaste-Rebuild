@@ -395,7 +395,11 @@ export function BookingScreen() {
           />
           <Summary
             label="Duration"
-            value={`${durationHours} hour${durationHours > 1 ? 's' : ''}`}
+            value={
+              durationMode === 'custom' && (!startTime || !customEndAt)
+                ? 'Custom — select start and end'
+                : `${durationHours} hour${durationHours > 1 ? 's' : ''}`
+            }
           />
           <Summary label="Add-on" value={addOnKey ? (shootingMachine?.name ?? addOnKey) : 'None'} />
           {quote ? (
