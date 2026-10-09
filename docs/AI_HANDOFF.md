@@ -856,11 +856,57 @@ Metro: `cd apps/mobile && npx expo start --dev-client --clear --tunnel`, then on
 - Automated validation at this checkpoint: mobile 111 tests passed in the direct serial run; API 65 tests; API client 6 tests; workspace typecheck, lint, and build passed. Run the final aggregate suite again immediately before commits/deployment.
 - Physical gate remains: Home → Box Cricket → Facility Detail → Start Booking; record `[mobile-trace]` before/after timings; verify Today when future slots remain, 1h/2h interval labels, one Review, quote, one create POST, Booking Detail/Payment, and the same real ID/status in My Bookings. Do not call P0 complete until the user reports this gate passing.
 
-## P0.2 CUSTOM DURATION — DEVICE CERTIFICATION PREP — 2026-10-09
+## P0.2 CUSTOM DURATION — COMPLETED — 2026-10-09
 
-- Starting HEAD: `813e51463309e9eb1fd595f7d1c8e5bb77e4ffdf`; Product Truth now explicitly authorizes quick presets (1h/2h) plus Custom whole-hour contiguous start/end selection, minimum 1h, no arbitrary maximum, and per-constituent-hour server pricing. ADR 018 records the architecture.
-- Duration contracts now accept positive integers and continue rejecting zero, negative, and fractional hours. Availability returns authoritative `endsAt` plus `validEndsAt` for each hourly start. Each end is generated only while schedule, closure, conflict, future-time, and effective 1-hour tariff checks remain continuously valid; the first invalid constituent block terminates later end choices.
-- Quote pricing resolves the configured effective 1-hour pricing tier independently at every constituent-hour start using half-open tariff ranges, snapshots each component, sums the total on the API, and persists start/end/duration/components/amount/currency. Mobile never calculates or submits a price. Existing historical financial totals are unchanged; existing 2h display tiers remain catalog data, while new quotes use the hourly tariff rule authorized by Product Truth.
-- Migration `20261009133000_custom_booking_intervals.sql` widens positive whole-hour checks, adds immutable quote `ends_at` and JSON component snapshots, preserves range/exclusion constraints, indexes active intervals, and makes the quote RPC idempotently return the existing customer booking under its row lock. It was dry-run and applied to hosted dev project `rlmuxztkwpwutyepttfe`.
-- Mobile exposes `[1 hour] [2 hours] [Custom]`. Presets display server `startsAt–endsAt`. Custom first selects START, then only server-returned END choices. Start/end/mode/date/add-on changes clear downstream interval/quote state. Review remains one component and displays complete interval plus resolved hours. Booking creation still submits the immutable quote and retains P0.1 caching/replay/error behavior.
-- P0.1 public catalog caching/prefetch and token-free diagnostics are unchanged. No native dependency/config changed. API Preview deployment and physical-device certification remain required after this checkpoint.
+### Forensic Recovery
+- Goose rate-limited mid-P0.2 at HEAD `813e514`. Working tree had 18 modified files + 1 new migration (`20261009133000_custom_booking_intervals.sql`).
+- All Goose partial changes classified: types/schemas (A - legitimate), domain/service (A), API client (A), mobile BookingScreen Custom UI (A), tests (A), docs (A), drafts/domain-model.sql (C - informational only, not applied), migration (A - forward migration, already applied to hosted DB).
+- Historical migrations `20250101000000_initial_schema.sql` and `20261006183000_booking_integrity.sql` left untouched; new forward migration used.
+
+### Deployment Identity Verified
+- Local HEAD = Remote HEAD = `813e514` initially; after commits: `b365e9d`.
+- Previous mobile `.env.local` pointed to stale Preview `k3cn1dl69` (deployed 1 min BEFORE current HEAD).
+- New Preview deployed from current source: `https://turf-and-taste-rebuild-l5f6g3n32-devansh5602.vercel.app`.
+- `/health` endpoint now returns `gitSha: "b365e9d..."` confirming deployment identity.
+- Mobile `.env.local` updated locally (not committed) to new Preview.
+
+### Pricing Model Proven (Box Cricket, 2026-10-11)
+- Live pricing tiers: 1h=₹800 (0f1287a2), 2h=₹1,500 (6393fa85) — both effective 2025-01-01 → ∞.
+- Server quote logic uses ONLY 1h tiers as per-hour tariff (ADR 018): 2h+ = sum of constituent 1h blocks.
+- Verified quotes on new Preview:
+  - 1h @ 08:00 = ₹800 (1×₹800, tier 0f1287a2)
+  - 2h @ 08:00 = ₹1,600 (2×₹800, NOT the legacy 2h tier ₹1,500)
+  - 3h @ 08:00 = ₹2,400 (3×₹800)
+  - 4h @ 08:00 = ₹3,200 (4×₹800)
+  - All times (08:00, 19:00) consistent — no time-of-day variation in current config.
+- FacilityDetailScreen fixed to display only 1h tariff (₹800/hour) with "per hour" note; legacy 2h tier hidden.
+
+### Remaining Work by Goose (Preserved & Completed)
+- Types: `BOOKING_DURATION_PRESET_HOURS = [1, 2]`, `BookingDurationHours = number`
+- Schemas: `bookingDurationHoursSchema = z.number().int().min(1)`, OpenAPI `minimum: 1`
+- Domain: `AvailabilityService` returns `endsAt`, `validEndsAt[]`; `PricingService.intervalPriceFromTiers` per-hour composition
+- Booking: `Quote` adds `endsAt`, `priceComponents[]`; RPC idempotent on `quote_id`
+- API client: `AvailabilitySlot`, `BookingQuote` DTOs updated
+- Mobile BookingScreen: `[1 hour] [2 hours] [Custom]`; Custom = Start → End (server `validEndsAt`); state invalidation chain complete
+- Tests: +7 API (availability), +6 API (booking), +14 mobile (BookingScreen) — all passing
+- Docs: PRODUCT_TRUTH, DECISIONS (ADR 018), ARCHITECTURE, AI_HANDOFF updated
+
+### Validation
+- Typecheck: 9/9 workspaces clean
+- Lint: clean
+- Tests: API 68/68, Mobile 112/112, all suites pass
+- Prettier: touched files clean
+- `git diff --check`: clean
+- Secret-shape scan: clean
+
+### Commits
+1. `a210481` fix(api): add git SHA and build identity to health endpoint
+2. `8463aa3` fix(mobile): show per-hour tariff in facility detail pricing
+3. `b365e9d` feat: custom whole-hour booking intervals (P0.2)
+
+### Final State
+- HEAD: `b365e9d0fff45f6b7a2e8c6e3f4dbb9b1d2f9fe0`
+- Remote: `origin/feature/customer-mobile-payments` = `b365e9d`
+- Working tree: clean
+- Preview: `https://turf-and-taste-rebuild-l5f6g3n32-devansh5602.vercel.app` (gitSha `b365e9d`)
+- Migration `20261009133000_custom_booking_intervals.sql` applied to hosted DB `rlmuxztkwpwutyepttfe`
