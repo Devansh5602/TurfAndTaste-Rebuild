@@ -904,9 +904,69 @@ Metro: `cd apps/mobile && npx expo start --dev-client --clear --tunnel`, then on
 2. `8463aa3` fix(mobile): show per-hour tariff in facility detail pricing
 3. `b365e9d` feat: custom whole-hour booking intervals (P0.2)
 
-### Final State
+### Final State (P0.2 Custom Duration)
 - HEAD: `b365e9d0fff45f6b7a2e8c6e3f4dbb9b1d2f9fe0`
 - Remote: `origin/feature/customer-mobile-payments` = `b365e9d`
 - Working tree: clean
 - Preview: `https://turf-and-taste-rebuild-l5f6g3n32-devansh5602.vercel.app` (gitSha `b365e9d`)
 - Migration `20261009133000_custom_booking_intervals.sql` applied to hosted DB `rlmuxztkwpwutyepttfe`
+
+## PHYSICAL DEVICE BOOKING PASS + PAYMENT VERIFICATION FIX — 2026-10-09
+
+### Device Certification Results (Prior P0.2)
+✅ **All booking flow steps passed on Android physical device:**
+- Home → Box Cricket → Facility Detail (loads fast, shows 1h tariff ₹800/hr)
+- Today (Fri 9) selectable with future slots only
+- 1h preset: START–END labels (4:00 pm – 5:00 pm … 9:00 pm – 10:00 pm)
+- 2h preset: contiguous intervals (4:00 pm – 6:00 pm … 8:00 pm – 10:00 pm)
+- Custom: Start (4 PM → 9 PM) → End (5 PM → 10 PM) → 6h @ ₹4,800 quote
+- Create Booking → 201 with real ID → Booking Detail shows "Awaiting payment"
+- My Bookings persists new + prior bookings correctly
+
+### Payment Verification Root Cause
+**Server signature order was reversed.** Razorpay signs `order_id|payment_id` on checkout return, but `PaymentService.verifyPayment` computed HMAC over `payment_id|order_id`.
+
+- File: `apps/api/src/services/payment.ts` line 160-163
+- Fix: `${providerOrderId}|${providerPaymentId}` (was `${providerPaymentId}|${providerOrderId}`)
+- Verified: invalid signature (wrong order) → 400 INVALID_SIGNATURE; valid signature → passes HMAC check
+
+### Payment Fixes Applied
+1. **Signature order fix** (`ab839f2`): `order_id|payment_id` per Razorpay spec
+2. **Test helper fix** (`c365299`): `checkoutSignature(orderId, paymentId)` updated
+3. **Mobile retry guard** (`ee549f7`): only reuse provider order when booking still `pending`
+4. **PaymentScreen UX**: "Ready for payment" badge instead of "No payment order"
+5. **BookingScreen Custom UX**: Review shows "Custom — select start and end" when incomplete (fixes stale "1 hour" display)
+
+### Validation After Payment Fix
+- Typecheck: 9/9 clean
+- Lint: clean
+- Tests: API 68/68 (payment 20/20), Mobile 112/112
+- Prettier: clean
+- `git diff --check`: clean
+- Secret-shape scan: clean
+
+### New Commits
+1. `ab839f2` fix(payment): correct Razorpay signature order to order_id|payment_id
+2. `c365299` test(payment): fix checkoutSignature helper to match Razorpay order_id|payment_id format
+3. `ee549f7` fix(mobile): payment retry guard + custom duration review state
+
+### Preview Deployment
+- URL: `https://turf-and-taste-rebuild-kp4j5mvsu-devansh5602.vercel.app`
+- `/health` returns `gitSha: "ee549f7524c22c3e613f876bf762db0941381688"` (matches HEAD)
+- Mobile `.env.local` updated locally (not committed)
+
+### Current HEAD
+- `ee549f7524c22c3e613f876bf762db0941381688`
+- Remote: `origin/feature/customer-mobile-payments` = `ee549f7`
+- Working tree: clean
+
+### Physical-Device Retest Checklist (Payment)
+1. Home → Box Cricket → Facility Detail
+2. Start Booking → Today → Custom → 4 PM → 10 PM (6h)
+3. Get Server Quote → ₹4,800
+4. Create Booking → Booking Detail (Awaiting payment)
+5. Pay Now → Razorpay Test Mode checkout
+6. Complete test payment → App verifies signature successfully
+7. Booking status → Confirmed/Paid
+8. My Bookings → shows booking with correct payment status
+9. Retry payment on same booking → guarded (no duplicate checkout)
