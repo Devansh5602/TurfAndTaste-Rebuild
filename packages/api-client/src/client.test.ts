@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClientError, authenticatedRequest, getHealth } from './client';
+import { ApiClientError, authenticatedRequest, getHealth, publicRequest } from './client';
 
 describe('getHealth', () => {
   it('parses a successful health envelope', async () => {
@@ -36,6 +36,34 @@ describe('getHealth', () => {
     );
 
     await expect(getHealth('http://localhost:4000')).rejects.toBeInstanceOf(ApiClientError);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('request authorization', () => {
+  it('does not send an authorization header for public catalog requests', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ data: [], error: null }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await publicRequest('http://localhost:4000', '/api/v1/facilities');
+
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('authorization')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the bearer token for authenticated requests', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ data: [], error: null }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await authenticatedRequest('http://localhost:4000', '/api/v1/bookings', 'customer-token');
+
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer customer-token',
+    );
     vi.unstubAllGlobals();
   });
 });

@@ -54,19 +54,10 @@ export async function getHealth(
   return parsed.data;
 }
 
-export async function authenticatedRequest<T>(
-  baseUrl: string,
-  path: string,
-  accessToken: string,
-  init?: RequestInit,
-): Promise<T> {
+async function request<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(new URL(path, baseUrl), {
     ...init,
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${accessToken}`,
-      ...init?.headers,
-    },
+    headers: { accept: 'application/json', ...init?.headers },
   });
 
   const body = (await response.json()) as ApiResponse<T>;
@@ -79,4 +70,20 @@ export async function authenticatedRequest<T>(
   }
 
   return body.data;
+}
+
+export function publicRequest<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  return request<T>(baseUrl, path, init);
+}
+
+export function authenticatedRequest<T>(
+  baseUrl: string,
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+): Promise<T> {
+  return request<T>(baseUrl, path, {
+    ...init,
+    headers: { authorization: `Bearer ${accessToken}`, ...init?.headers },
+  });
 }

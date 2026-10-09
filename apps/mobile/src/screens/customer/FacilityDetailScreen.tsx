@@ -1,6 +1,6 @@
 import { useQuery, queryOptions } from '@tanstack/react-query';
 import { getFacility, getFacilityPricing, getFacilitySchedule } from '@turf-and-taste/api-client';
-import { useAuth } from '../../context/AuthContext';
+import { traceMobileRequest, traceNavigation } from '../../network/diagnostics';
 import {
   Badge,
   Button,
@@ -15,7 +15,6 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { CustomerStackScreenProps } from '../../navigation/types';
 
 export function FacilityDetailScreen() {
-  const { getAccessToken } = useAuth();
   const route = useRoute<CustomerStackScreenProps<'FacilityDetail'>['route']>();
   const navigation = useNavigation<CustomerStackScreenProps<'FacilityDetail'>['navigation']>();
   const facilityKey = route.params.facilityKey;
@@ -24,10 +23,8 @@ export function FacilityDetailScreen() {
   const facilityQuery = queryOptions({
     queryKey: ['facility', facilityKey],
     queryFn: async () => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('No access token');
       if (!apiUrl) throw new Error('Missing API URL');
-      return getFacility(apiUrl, token, facilityKey);
+      return traceMobileRequest('facility.detail', () => getFacility(apiUrl, facilityKey));
     },
     enabled: !!facilityKey,
     staleTime: 5 * 60 * 1000,
@@ -42,10 +39,8 @@ export function FacilityDetailScreen() {
   const pricingQuery = queryOptions({
     queryKey: ['facilityPricing', facilityKey],
     queryFn: async () => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('No access token');
       if (!apiUrl) throw new Error('Missing API URL');
-      return getFacilityPricing(apiUrl, token, facilityKey);
+      return traceMobileRequest('facility.pricing', () => getFacilityPricing(apiUrl, facilityKey));
     },
     enabled: !!facilityKey,
     staleTime: 5 * 60 * 1000,
@@ -56,10 +51,10 @@ export function FacilityDetailScreen() {
   const scheduleQuery = queryOptions({
     queryKey: ['facilitySchedule', facilityKey],
     queryFn: async () => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('No access token');
       if (!apiUrl) throw new Error('Missing API URL');
-      return getFacilitySchedule(apiUrl, token, facilityKey);
+      return traceMobileRequest('facility.schedule', () =>
+        getFacilitySchedule(apiUrl, facilityKey),
+      );
     },
     enabled: !!facilityKey,
     staleTime: 5 * 60 * 1000,
@@ -168,7 +163,10 @@ export function FacilityDetailScreen() {
             </Text>
             <Button
               label="Start booking"
-              onPress={() => navigation.navigate('Booking', { facilityKey })}
+              onPress={() => {
+                traceNavigation(`FacilityDetail -> Booking facility=${facilityKey}`);
+                navigation.navigate('Booking', { facilityKey });
+              }}
             />
           </View>
         </Card>

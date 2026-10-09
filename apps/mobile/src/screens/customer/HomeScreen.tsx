@@ -1,6 +1,12 @@
-import { queryOptions, useQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
-import { getFacilities, type Facility } from '@turf-and-taste/api-client';
+import {
+  getFacilities,
+  getFacility,
+  getFacilityPricing,
+  getFacilitySchedule,
+  type Facility,
+} from '@turf-and-taste/api-client';
 import { PROPERTY } from '@turf-and-taste/types';
 import {
   Button,
@@ -11,21 +17,19 @@ import {
   Skeleton,
 } from '@turf-and-taste/ui-native';
 import { Pressable, RefreshControl, SafeAreaView, ScrollView, Text, View } from 'react-native';
-import { useAuth } from '../../context/AuthContext';
 import type { ExtendedNavigationProp } from '../../navigation/types';
+import { traceMobileRequest, traceNavigation } from '../../network/diagnostics';
 
 export function HomeScreen() {
-  const { getAccessToken } = useAuth();
   const navigation = useNavigation<ExtendedNavigationProp>();
+  const queryClient = useQueryClient();
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 
   const facilitiesQuery = queryOptions({
     queryKey: ['facilities'],
     queryFn: async () => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('No access token');
       if (!apiUrl) throw new Error('Missing API URL');
-      return getFacilities(apiUrl, token);
+      return traceMobileRequest('home.facilities', () => getFacilities(apiUrl));
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -71,9 +75,30 @@ export function HomeScreen() {
                   <FacilityCard
                     key={facility.id}
                     facility={facility}
-                    onPress={() =>
-                      navigation.navigate('FacilityDetail', { facilityKey: facility.key })
-                    }
+                    onPressIn={() => {
+                      if (!apiUrl) return;
+                      void Promise.all([
+                        queryClient.prefetchQuery({
+                          queryKey: ['facility', facility.key],
+                          queryFn: () => getFacility(apiUrl, facility.key),
+                          staleTime: 5 * 60_000,
+                        }),
+                        queryClient.prefetchQuery({
+                          queryKey: ['facilityPricing', facility.key],
+                          queryFn: () => getFacilityPricing(apiUrl, facility.key),
+                          staleTime: 5 * 60_000,
+                        }),
+                        queryClient.prefetchQuery({
+                          queryKey: ['facilitySchedule', facility.key],
+                          queryFn: () => getFacilitySchedule(apiUrl, facility.key),
+                          staleTime: 5 * 60_000,
+                        }),
+                      ]);
+                    }}
+                    onPress={() => {
+                      traceNavigation(`Home -> FacilityDetail facility=${facility.key}`);
+                      navigation.navigate('FacilityDetail', { facilityKey: facility.key });
+                    }}
                   />
                 ))}
               </View>
@@ -108,11 +133,20 @@ export function HomeScreen() {
   );
 }
 
-function FacilityCard({ facility, onPress }: { facility: Facility; onPress: () => void }) {
+function FacilityCard({
+  facility,
+  onPress,
+  onPressIn,
+}: {
+  facility: Facility;
+  onPress: () => void;
+  onPressIn: () => void;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`View ${facility.name}`}
+      onPressIn={onPressIn}
       onPress={onPress}
       className="min-h-11 flex-row items-center rounded-lg border border-border bg-surface-muted p-4 active:opacity-70"
     >

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { getFacilities } from '@turf-and-taste/api-client';
-import { useAuth } from '../../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import type { ExtendedNavigationProp } from '../../navigation/types';
 import { EmptyState, PageHeader, Skeleton } from '@turf-and-taste/ui-native';
@@ -65,7 +64,6 @@ function TouchableFacilityCard({ facility, onPress }: { facility: Facility; onPr
 }
 
 export function FacilitiesScreen() {
-  const { getAccessToken } = useAuth();
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   const navigation = useNavigation<ExtendedNavigationProp>();
 
@@ -77,10 +75,8 @@ export function FacilitiesScreen() {
   } = useQuery({
     queryKey: ['facilities'],
     queryFn: async () => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('No access token');
       if (!apiUrl) throw new Error('Missing API URL');
-      return getFacilities(apiUrl, token);
+      return getFacilities(apiUrl);
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,

@@ -306,13 +306,11 @@ export class AvailabilityService {
 
     // Fetch everything the whole day needs in one round-trip per table instead of
     // re-querying per candidate slot (the previous loop made ~4 queries per slot).
-    const overrides = await this.schedulesService.getOverridesBetween(facilityId, opens, closes);
-    const conflicts = await this.getConflictsBetween(
-      facilityId,
-      new Date(opens.getTime() - 2 * 3_600_000),
-      closes,
-    );
-    const pricingTiers = await this.pricingService.getAllPricing(facilityId);
+    const [overrides, conflicts, pricingTiers] = await Promise.all([
+      this.schedulesService.getOverridesBetween(facilityId, opens, closes),
+      this.getConflictsBetween(facilityId, new Date(opens.getTime() - 2 * 3_600_000), closes),
+      this.pricingService.getAllPricing(facilityId),
+    ]);
 
     const slots: AvailabilityListing['slots'] = [];
     for (

@@ -1,4 +1,4 @@
-import { ApiClientError, authenticatedRequest } from './client';
+import { ApiClientError, publicRequest } from './client';
 import type { BookingDurationHours, FacilityKey } from '@turf-and-taste/types';
 
 export interface Facility {
@@ -39,21 +39,16 @@ export interface PricingTier {
   effective_to: string | null;
 }
 
-export async function getFacilities(baseUrl: string, accessToken: string): Promise<Facility[]> {
-  return authenticatedRequest<Facility[]>(baseUrl, '/api/v1/facilities', accessToken);
+export async function getFacilities(baseUrl: string): Promise<Facility[]> {
+  return publicRequest<Facility[]>(baseUrl, '/api/v1/facilities');
 }
 
 export async function getFacility(
   baseUrl: string,
-  accessToken: string,
   key: FacilityKey,
 ): Promise<FacilityWithAddons | null> {
   try {
-    return await authenticatedRequest<FacilityWithAddons | null>(
-      baseUrl,
-      `/api/v1/facilities/${key}`,
-      accessToken,
-    );
+    return await publicRequest<FacilityWithAddons | null>(baseUrl, `/api/v1/facilities/${key}`);
   } catch (error) {
     if (error instanceof ApiClientError && error.status === 404) {
       return null;
@@ -62,26 +57,13 @@ export async function getFacility(
   }
 }
 
-export async function getFacilitySchedule(
-  baseUrl: string,
-  accessToken: string,
-  key: FacilityKey,
-): Promise<Schedule[]> {
-  return authenticatedRequest<Schedule[]>(
-    baseUrl,
-    `/api/v1/facilities/${key}/schedule`,
-    accessToken,
-  );
+export async function getFacilitySchedule(baseUrl: string, key: FacilityKey): Promise<Schedule[]> {
+  return publicRequest<Schedule[]>(baseUrl, `/api/v1/facilities/${key}/schedule`);
 }
 
 export async function getFacilityPricing(
   baseUrl: string,
-  accessToken: string,
   key: FacilityKey,
 ): Promise<PricingTier[]> {
-  return authenticatedRequest<PricingTier[]>(
-    baseUrl,
-    `/api/v1/facilities/${key}/pricing`,
-    accessToken,
-  );
+  return publicRequest<PricingTier[]>(baseUrl, `/api/v1/facilities/${key}/pricing`);
 }
