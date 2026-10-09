@@ -120,18 +120,32 @@ export function FacilityDetailScreen() {
             <View className="gap-4">
               <SectionHeader title="Pricing" />
               <Text className="text-body-small text-text-secondary">
-                All prices in INR. Add-ons increase the base price.
+                All prices in INR. Custom durations are priced per hour using the 1-hour tariff.
+                Add-ons increase the base price.
               </Text>
               <View className="gap-2">
-                {pricing.map((tier) => (
-                  <PricingRow
-                    key={tier.id}
-                    duration={tier.duration_hours}
-                    amount={tier.amount_paise}
-                    addon={tier.addon_id}
-                    currency={tier.currency}
-                  />
-                ))}
+                {pricing
+                  .filter((tier) => tier.duration_hours === 1 && !tier.addon_id)
+                  .map((tier) => (
+                    <PricingRow
+                      key={tier.id}
+                      duration={tier.duration_hours}
+                      amount={tier.amount_paise}
+                      addon={tier.addon_id}
+                      currency={tier.currency}
+                    />
+                  ))}
+                {pricing
+                  .filter((tier) => tier.addon_id)
+                  .map((tier) => (
+                    <PricingRow
+                      key={tier.id}
+                      duration={tier.duration_hours}
+                      amount={tier.amount_paise}
+                      addon={tier.addon_id}
+                      currency={tier.currency}
+                    />
+                  ))}
               </View>
             </View>
           </Card>
