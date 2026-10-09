@@ -30,6 +30,8 @@ describe('QuoteService', () => {
       addon_key: 'shooting-machine',
       starts_at: '2026-10-07T01:30:00.000Z',
       duration_hours: 1,
+      ends_at: '2026-10-07T02:30:00.000Z',
+      price_components: [],
       amount_paise: 100000,
       currency: 'INR',
       expires_at: '2026-10-06T13:15:00.000Z',
@@ -47,7 +49,21 @@ describe('QuoteService', () => {
       })),
     };
     const availability = { checkSlotAvailability: vi.fn(async () => ({ available: true })) };
-    const pricing = { getPrice: vi.fn(async () => ({ amount_paise: 100000, currency: 'INR' })) };
+    const pricing = {
+      getIntervalPrice: vi.fn(async () => ({
+        amountPaise: 100000,
+        currency: 'INR',
+        components: [
+          {
+            startsAt: '2026-10-07T01:30:00.000Z',
+            endsAt: '2026-10-07T02:30:00.000Z',
+            amountPaise: 100000,
+            currency: 'INR',
+            pricingTierId: 'tier-1',
+          },
+        ],
+      })),
+    };
     const service = new QuoteService(
       createInsertChain(row) as never,
       availability as never,
@@ -63,7 +79,12 @@ describe('QuoteService', () => {
       'cricket-green-net',
       'shooting-machine',
     );
-    expect(pricing.getPrice).toHaveBeenCalledWith('facility-id', 'addon-id', 1, expect.any(Date));
+    expect(pricing.getIntervalPrice).toHaveBeenCalledWith(
+      'facility-id',
+      'addon-id',
+      expect.any(Date),
+      1,
+    );
   });
 
   it('refuses to quote an unavailable slot', async () => {

@@ -8,7 +8,12 @@ import {
   quoteSelectionSchema,
 } from '../../../../packages/schemas/src/index.js';
 import { HttpError } from '../errors/http-error.js';
-import type { AvailabilityService, FacilitiesService, PricingService } from './domain.js';
+import type {
+  AvailabilityService,
+  FacilitiesService,
+  PriceComponent,
+  PricingService,
+} from './domain.js';
 
 export interface Quote {
   id: string;
@@ -19,7 +24,9 @@ export interface Quote {
   date: string;
   startTime: string;
   startsAt: string;
+  endsAt: string;
   durationHours: BookingDurationHours;
+  priceComponents: PriceComponent[];
   amountPaise: number;
   currency: string;
   expiresAt: string;
@@ -85,11 +92,11 @@ export class QuoteService {
         availability.reason ?? 'The selected time is no longer available.',
       );
     }
-    const price = await this.pricingService.getPrice(
+    const price = await this.pricingService.getIntervalPrice(
       facility.id,
       addon?.id ?? null,
-      selection.durationHours,
       startsAt,
+      selection.durationHours,
     );
     if (!price)
       throw new HttpError(
@@ -107,8 +114,10 @@ export class QuoteService {
         addon_id: addon?.id ?? null,
         addon_key: addon?.key ?? null,
         starts_at: startsAt.toISOString(),
+        ends_at: new Date(startsAt.getTime() + selection.durationHours * 3_600_000).toISOString(),
         duration_hours: selection.durationHours,
-        amount_paise: price.amount_paise,
+        price_components: price.components,
+        amount_paise: price.amountPaise,
         currency: price.currency,
         expires_at: expiresAt.toISOString(),
       })
@@ -144,7 +153,9 @@ export class QuoteService {
       date: businessDate(startsAt),
       startTime: businessTime(startsAt),
       startsAt: startsAt.toISOString(),
+      endsAt: row.ends_at as string,
       durationHours: row.duration_hours as BookingDurationHours,
+      priceComponents: (row.price_components as PriceComponent[] | null) ?? [],
       amountPaise: row.amount_paise as number,
       currency: row.currency as string,
       expiresAt: row.expires_at as string,

@@ -30,9 +30,10 @@ export const ADD_ON_LABELS: Record<AddOnKey, string> = {
   'shooting-machine': 'Shooting Machine',
 };
 
-export const BOOKING_DURATION_HOURS = [1, 2] as const;
+export const BOOKING_DURATION_PRESET_HOURS = [1, 2] as const;
 
-export type BookingDurationHours = (typeof BOOKING_DURATION_HOURS)[number];
+/** Whole-hour duration validated against a contiguous server-authoritative interval. */
+export type BookingDurationHours = number;
 
 export const AUTH_DOMAINS = ['customer', 'staff'] as const;
 

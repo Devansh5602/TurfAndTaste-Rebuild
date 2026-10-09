@@ -65,7 +65,26 @@ export interface AvailabilityListing {
   businessTimeZone: 'Asia/Kolkata';
   date: string;
   durationHours: BookingDurationHours;
-  slots: Array<{ startTime: string; startsAt: string }>;
+  slots: Array<{
+    startTime: string;
+    startsAt: string;
+    endsAt: string;
+    validEndsAt: string[];
+  }>;
+}
+
+export interface PriceComponent {
+  startsAt: string;
+  endsAt: string;
+  amountPaise: number;
+  currency: string;
+  pricingTierId: string;
+}
+
+export interface IntervalPrice {
+  amountPaise: number;
+  currency: string;
+  components: PriceComponent[];
 }
 
 export class FacilitiesService {
@@ -195,25 +214,57 @@ export class SchedulesService {
 export class PricingService {
   constructor(private readonly supabase: SupabaseClient) {}
 
-  async getPrice(
+  async getIntervalPrice(
     facilityId: string,
     addonId: string | null,
+    startsAt: Date,
     durationHours: BookingDurationHours,
-    at: Date = new Date(),
-  ): Promise<{ amount_paise: number; currency: string } | null> {
-    let query = this.supabase
-      .from('pricing_tiers')
-      .select('amount_paise, currency')
-      .eq('facility_id', facilityId)
-      .eq('duration_hours', durationHours)
-      .lte('effective_from', at.toISOString())
-      .or(`effective_to.is.null,effective_to.gte.${at.toISOString()}`)
-      .order('effective_from', { ascending: false })
-      .limit(1);
-    query = addonId ? query.eq('addon_id', addonId) : query.is('addon_id', null);
-    const { data, error } = await query.maybeSingle();
-    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch pricing.');
-    return data;
+  ): Promise<IntervalPrice | null> {
+    const tiers = await this.getAllPricing(facilityId);
+    return this.intervalPriceFromTiers(tiers, addonId, startsAt, durationHours);
+  }
+
+  intervalPriceFromTiers(
+    tiers: PricingTier[],
+    addonId: string | null,
+    startsAt: Date,
+    durationHours: BookingDurationHours,
+  ): IntervalPrice | null {
+    const components: PriceComponent[] = [];
+    for (let hour = 0; hour < durationHours; hour += 1) {
+      const blockStart = new Date(startsAt.getTime() + hour * 3_600_000);
+      const blockEnd = new Date(blockStart.getTime() + 3_600_000);
+      const candidates = tiers
+        .filter(
+          (tier) =>
+            tier.duration_hours === 1 &&
+            (addonId ? tier.addon_id === addonId : tier.addon_id === null),
+        )
+        .filter((tier) => {
+          const from = new Date(tier.effective_from);
+          const to = tier.effective_to ? new Date(tier.effective_to) : null;
+          return from <= blockStart && (!to || blockStart < to);
+        })
+        .sort((a, b) => b.effective_from.localeCompare(a.effective_from));
+      const tier = candidates[0];
+      if (!tier) return null;
+      components.push({
+        startsAt: blockStart.toISOString(),
+        endsAt: blockEnd.toISOString(),
+        amountPaise: tier.amount_paise,
+        currency: tier.currency,
+        pricingTierId: tier.id,
+      });
+    }
+    const currency = components[0]?.currency;
+    if (!currency || components.some((component) => component.currency !== currency)) {
+      return null;
+    }
+    return {
+      amountPaise: components.reduce((total, component) => total + component.amountPaise, 0),
+      currency,
+      components,
+    };
   }
 
   async getAllPricing(facilityId: string): Promise<PricingTier[]> {
@@ -264,22 +315,22 @@ export class AvailabilityService {
     const slotEnd = new Date(slotStart.getTime() + durationHours * 3_600_000);
     const { data: conflicts, error } = await this.supabase
       .from('bookings')
-      .select('id, starts_at, duration_hours')
+      .select('id, starts_at, ends_at, duration_hours')
       .eq('facility_id', facilityId)
       .in('status', ['pending', 'confirmed'])
       .lt('starts_at', slotEnd.toISOString())
-      .gt('starts_at', new Date(slotStart.getTime() - 2 * 3_600_000).toISOString());
+      .gt('ends_at', slotStart.toISOString());
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check availability.');
     const overlaps = (conflicts ?? []).some((booking) => {
       const bookingStart = new Date(booking.starts_at);
-      const bookingEnd = new Date(
-        bookingStart.getTime() + Number(booking.duration_hours) * 3_600_000,
-      );
+      const bookingEnd = new Date(booking.ends_at);
       return bookingStart < slotEnd && bookingEnd > slotStart;
     });
     if (overlaps)
       return this.unavailable(facilityId, date, startTime, durationHours, 'Slot already booked');
-    if (!(await this.pricingService.getPrice(facilityId, addonId, durationHours, slotStart))) {
+    if (
+      !(await this.pricingService.getIntervalPrice(facilityId, addonId, slotStart, durationHours))
+    ) {
       return this.unavailable(facilityId, date, startTime, durationHours, 'Pricing not configured');
     }
     return { facilityId, date, startTime, durationHours, available: true };
@@ -308,7 +359,7 @@ export class AvailabilityService {
     // re-querying per candidate slot (the previous loop made ~4 queries per slot).
     const [overrides, conflicts, pricingTiers] = await Promise.all([
       this.schedulesService.getOverridesBetween(facilityId, opens, closes),
-      this.getConflictsBetween(facilityId, new Date(opens.getTime() - 2 * 3_600_000), closes),
+      this.getConflictsBetween(facilityId, opens, closes),
       this.pricingService.getAllPricing(facilityId),
     ]);
 
@@ -320,24 +371,41 @@ export class AvailabilityService {
     ) {
       const startTime = businessTime(instant);
       if (instant <= serverNow) continue;
-      const slotEnd = new Date(instant.getTime() + durationHours * 3_600_000);
-      const closedToday = overrides.some(
-        (override) =>
-          override.closed &&
-          new Date(override.starts_at) < slotEnd &&
-          new Date(override.ends_at) > instant,
-      );
-      if (closedToday) continue;
-      const overlaps = conflicts.some((booking) => {
-        const bookingStart = new Date(booking.starts_at);
-        const bookingEnd = new Date(
-          bookingStart.getTime() + Number(booking.duration_hours) * 3_600_000,
+      const validEndsAt: string[] = [];
+      for (
+        let candidateHours = 1;
+        instant.getTime() + candidateHours * 3_600_000 <= closes.getTime();
+        candidateHours += 1
+      ) {
+        const candidateEnd = new Date(instant.getTime() + candidateHours * 3_600_000);
+        const closed = overrides.some(
+          (override) =>
+            override.closed &&
+            new Date(override.starts_at) < candidateEnd &&
+            new Date(override.ends_at) > instant,
         );
-        return bookingStart < slotEnd && bookingEnd > instant;
+        const overlaps = conflicts.some((booking) => {
+          const bookingStart = new Date(booking.starts_at);
+          const bookingEnd = new Date(booking.ends_at);
+          return bookingStart < candidateEnd && bookingEnd > instant;
+        });
+        const priceable = this.pricingService.intervalPriceFromTiers(
+          pricingTiers,
+          addonId,
+          instant,
+          candidateHours,
+        );
+        if (closed || overlaps || !priceable) break;
+        validEndsAt.push(candidateEnd.toISOString());
+      }
+      const slotEnd = new Date(instant.getTime() + durationHours * 3_600_000);
+      if (!validEndsAt.includes(slotEnd.toISOString())) continue;
+      slots.push({
+        startTime,
+        startsAt: instant.toISOString(),
+        endsAt: slotEnd.toISOString(),
+        validEndsAt,
       });
-      if (overlaps) continue;
-      if (!this.effectivePrice(pricingTiers, addonId, durationHours, instant)) continue;
-      slots.push({ startTime, startsAt: instant.toISOString() });
     }
     return {
       serverNow: serverNow.toISOString(),
@@ -352,39 +420,16 @@ export class AvailabilityService {
     facilityId: string,
     from: Date,
     to: Date,
-  ): Promise<Array<{ id: string; starts_at: string; duration_hours: number }>> {
+  ): Promise<Array<{ id: string; starts_at: string; ends_at: string }>> {
     const { data, error } = await this.supabase
       .from('bookings')
-      .select('id, starts_at, duration_hours')
+      .select('id, starts_at, ends_at')
       .eq('facility_id', facilityId)
       .in('status', ['pending', 'confirmed'])
       .lt('starts_at', to.toISOString())
-      .gt('starts_at', from.toISOString());
+      .gt('ends_at', from.toISOString());
     if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check availability.');
     return data ?? [];
-  }
-
-  // In-memory mirror of PricingService.getPrice for a whole day of candidate slots.
-  private effectivePrice(
-    tiers: PricingTier[],
-    addonId: string | null,
-    durationHours: BookingDurationHours,
-    at: Date,
-  ): { amount_paise: number; currency: string } | null {
-    const candidates = tiers
-      .filter(
-        (tier) =>
-          tier.duration_hours === durationHours &&
-          (addonId ? tier.addon_id === addonId : tier.addon_id === null),
-      )
-      .filter((tier) => {
-        const from = new Date(tier.effective_from);
-        const to = tier.effective_to ? new Date(tier.effective_to) : null;
-        return from <= at && (!to || to >= at);
-      })
-      .sort((a, b) => b.effective_from.localeCompare(a.effective_from));
-    const tier = candidates[0];
-    return tier ? { amount_paise: tier.amount_paise, currency: tier.currency } : null;
   }
 
   private unavailable(

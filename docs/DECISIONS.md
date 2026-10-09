@@ -131,3 +131,13 @@ The e-mail confirmation callback (`turfandtaste://auth/callback`) is handled by 
 The deciding constraint is token hygiene: GoTrue's implicit-flow redirect carries `#access_token`/`#refresh_token` in the URL. Passing such URLs through React Navigation's linking would place tokens into navigation state, where they surface in navigation state dumps and devtools. The provider path keeps tokens inside the auth layer, where only code/name diagnostics are ever logged.
 
 The redirect target is a single constant (`MOBILE_AUTH_CALLBACK_URL`) shared by sign-up, resend, and the parser, so the Supabase dashboard Redirect URL allowlist has exactly one deep-link entry to match. The Expo `scheme` (`turfandtaste`) predates the Android dev client build, so the callback is JS-only: no new intent filters, no native rebuild.
+
+## ADR 018 — Server-authoritative whole-hour custom booking intervals
+
+Status: accepted
+
+Quick presets remain 1 hour and 2 hours. Custom duration is not a numeric free-form input: the customer selects a start and one of the server-approved end instants on the whole-hour timeline. Duration is the positive integer-hour difference, with a one-hour minimum and no arbitrary coded maximum. Operating schedules, closed overrides, active booking conflicts, future-time rules, contiguous priceability, and other server rules naturally bound the end.
+
+Availability returns the complete interval end plus every contiguous valid end for each start. Quote creation revalidates the interval and resolves the configured effective 1-hour pricing tier independently at each constituent hour using half-open effective ranges. The immutable quote stores start, end, duration, per-hour component snapshots, aggregate amount, currency, expiry, and customer ownership. Mobile displays these values and never calculates a payable amount.
+
+Existing 1-hour pricing rows are the configured hourly tariff source. Existing 2-hour bundle rows remain readable for facility information during transition but do not determine new booking quotes; new preset and custom quotes use the same per-hour tariff algorithm. Historical quote, booking, order, and payment totals are not recalculated. PostgreSQL retains the booking range exclusion constraint as the race-safe final conflict boundary, while quote ID plus customer ownership remains the booking idempotency boundary.

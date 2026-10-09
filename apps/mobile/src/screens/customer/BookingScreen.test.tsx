@@ -89,7 +89,17 @@ const pricing = [
   },
 ];
 
-const slot = { startTime: '06:00', startsAt: '2099-01-01T00:30:00.000Z' };
+const slot = {
+  startTime: '06:00',
+  startsAt: '2099-01-01T00:30:00.000Z',
+  endsAt: '2099-01-01T01:30:00.000Z',
+  validEndsAt: [
+    '2099-01-01T01:30:00.000Z',
+    '2099-01-01T02:30:00.000Z',
+    '2099-01-01T03:30:00.000Z',
+    '2099-01-01T04:30:00.000Z',
+  ],
+};
 const mockReplace = jest.fn();
 const listing = {
   serverNow: '2098-12-31T18:30:00.000Z',
@@ -218,6 +228,8 @@ describe('BookingScreen availability states', () => {
       addOnKey: undefined,
       addonKey: undefined,
       startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      priceComponents: [],
       amountPaise: 80000,
       currency: 'INR',
       expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
@@ -247,6 +259,44 @@ describe('BookingScreen availability states', () => {
     });
   });
 
+  it('selects a server-approved custom 3-hour interval and invalidates it on mode change', async () => {
+    api.getAvailability.mockResolvedValue(listing);
+    api.createQuote.mockResolvedValue({
+      id: 'quote-custom',
+      facilityKey: 'box-cricket',
+      facilityId: 'facility-1',
+      date: listing.date,
+      startTime: slot.startTime,
+      durationHours: 3,
+      startsAt: slot.startsAt,
+      endsAt: slot.validEndsAt[2],
+      priceComponents: [],
+      amountPaise: 240000,
+      currency: 'INR',
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+
+    renderBookingScreen();
+    fireEvent.press(await screen.findByText('Custom'));
+    fireEvent.press(await screen.findByText('6:00 am'));
+    fireEvent.press(await screen.findByText('9:00 am'));
+
+    expect(screen.getByText('3 hours')).toBeTruthy();
+    expect(screen.getByText('6:00 am – 9:00 am')).toBeTruthy();
+    fireEvent.press(screen.getByText('Get server quote'));
+    expect(await screen.findByText('Create booking')).toBeTruthy();
+    expect(api.createQuote).toHaveBeenCalledWith(
+      expect.any(String),
+      'customer-token',
+      expect.objectContaining({ startTime: '06:00', durationHours: 3 }),
+    );
+
+    fireEvent.press(screen.getByText('1 hour'));
+    expect(screen.queryByText('Create booking')).toBeNull();
+    expect(screen.getByText('Select a time')).toBeTruthy();
+    expect(screen.getAllByText('Review')).toHaveLength(1);
+  });
+
   it('submits once with the real quote and navigates with the returned booking id', async () => {
     api.getAvailability.mockResolvedValue(listing);
     api.createQuote.mockResolvedValue({
@@ -257,6 +307,8 @@ describe('BookingScreen availability states', () => {
       startTime: slot.startTime,
       durationHours: 1,
       startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      priceComponents: [],
       amountPaise: 80000,
       currency: 'INR',
       expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),

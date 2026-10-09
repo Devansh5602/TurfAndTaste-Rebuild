@@ -35,7 +35,11 @@ The dining model may contain outlets, categories, menu items, availability, desc
 
 ## Booking duration
 
-The baseline durations are 1 hour and 2 hours. Do not introduce 1.5-hour bookings unless this document changes.
+Quick presets are 1 hour and 2 hours. Custom booking uses a customer-selected start and a server-approved end on the same whole-hour availability timeline.
+
+All durations are positive whole hours with a one-hour minimum. Fractional durations are not supported. There is no arbitrary hard maximum: the maximum end is naturally bounded by operating hours, schedule overrides, closures, conflicting bookings, future-time rules, contiguous availability, pricing, and other server-side business rules.
+
+Every constituent hour from start to end must remain available. The server validates the complete interval and calculates the quote by summing the configured tariff applicable to each constituent hour. The client never manufactures an interval or calculates its payable total.
 
 ## Hours
 

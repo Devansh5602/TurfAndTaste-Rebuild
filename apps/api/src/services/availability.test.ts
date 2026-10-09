@@ -70,10 +70,12 @@ describe('AvailabilityService.listAvailability', () => {
 
     expect(listing.businessTimeZone).toBe('Asia/Kolkata');
     expect(listing.slots).toHaveLength(16); // 06:00 through 21:00 starts inside 06:00-22:00
-    expect(listing.slots[0]).toEqual({
+    expect(listing.slots[0]).toMatchObject({
       startTime: '06:00',
       startsAt: '2026-10-12T00:30:00.000Z',
+      endsAt: '2026-10-12T01:30:00.000Z',
     });
+    expect(listing.slots[0]?.validEndsAt).toHaveLength(16);
     expect(listing.slots.at(-1)?.startTime).toBe('21:00');
   });
 
@@ -82,13 +84,76 @@ describe('AvailabilityService.listAvailability', () => {
       schedules: () => ({ data: SCHEDULE }),
       schedule_overrides: () => ({ data: [] }),
       bookings: () => ({ data: [] }),
-      pricing_tiers: () => ({ data: [{ ...TIER, duration_hours: 2, amount_paise: 150000 }] }),
+      pricing_tiers: () => ({ data: [TIER] }),
     });
 
     const listing = await service.listAvailability(FACILITY_ID, DATE, 2, null);
 
     expect(listing.slots).toHaveLength(15); // 06:00 through 20:00 starts fit before 22:00
     expect(listing.slots.at(-1)?.startTime).toBe('20:00');
+  });
+
+  it('returns a custom 4 hour interval only across contiguous available blocks', async () => {
+    const service = createService({
+      schedules: () => ({ data: SCHEDULE }),
+      schedule_overrides: () => ({ data: [] }),
+      bookings: () => ({ data: [] }),
+      pricing_tiers: () => ({ data: [TIER] }),
+    });
+
+    const listing = await service.listAvailability(FACILITY_ID, DATE, 4, null);
+
+    expect(listing.slots).toHaveLength(13);
+    expect(listing.slots[0]).toMatchObject({
+      startTime: '06:00',
+      endsAt: '2026-10-12T04:30:00.000Z',
+    });
+  });
+
+  it('rejects a custom interval with a conflict in a constituent hour', async () => {
+    const service = createService({
+      schedules: () => ({ data: SCHEDULE }),
+      schedule_overrides: () => ({ data: [] }),
+      bookings: () => ({
+        data: [
+          {
+            id: 'booking-1',
+            starts_at: '2026-10-12T08:00:00+05:30',
+            ends_at: '2026-10-12T09:00:00+05:30',
+          },
+        ],
+      }),
+      pricing_tiers: () => ({ data: [TIER] }),
+    });
+
+    const listing = await service.listAvailability(FACILITY_ID, DATE, 3, null);
+
+    expect(listing.slots.map((slot) => slot.startTime)).not.toContain('06:00');
+  });
+
+  it('prices each constituent hour across effective tariff boundaries', () => {
+    const pricing = new PricingService({} as never);
+    const price = pricing.intervalPriceFromTiers(
+      [
+        { ...TIER, id: 'off-peak', effective_to: '2026-10-12T07:30:00.000Z' },
+        {
+          ...TIER,
+          id: 'peak',
+          amount_paise: 90000,
+          effective_from: '2026-10-12T07:30:00.000Z',
+        },
+      ],
+      null,
+      new Date('2026-10-12T06:30:00.000Z'),
+      3,
+    );
+
+    expect(price?.components.map((component) => component.pricingTierId)).toEqual([
+      'off-peak',
+      'peak',
+      'peak',
+    ]);
+    expect(price?.amountPaise).toBe(260000);
   });
 
   it('excludes slots that already passed on the selected date', async () => {
@@ -139,7 +204,13 @@ describe('AvailabilityService.listAvailability', () => {
       schedules: () => ({ data: SCHEDULE }),
       schedule_overrides: () => ({ data: [] }),
       bookings: () => ({
-        data: [{ id: 'booking-1', starts_at: '2026-10-12T09:00:00+05:30', duration_hours: 1 }],
+        data: [
+          {
+            id: 'booking-1',
+            starts_at: '2026-10-12T09:00:00+05:30',
+            ends_at: '2026-10-12T10:00:00+05:30',
+          },
+        ],
       }),
       pricing_tiers: () => ({ data: [TIER] }),
     });

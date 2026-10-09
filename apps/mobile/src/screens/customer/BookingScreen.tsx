@@ -11,7 +11,7 @@ import {
   type BookingQuote,
 } from '@turf-and-taste/api-client';
 import {
-  BOOKING_DURATION_HOURS,
+  BOOKING_DURATION_PRESET_HOURS,
   type AddOnKey,
   type BookingDurationHours,
 } from '@turf-and-taste/types';
@@ -36,6 +36,7 @@ import type { CustomerStackScreenProps } from '../../navigation/types';
 
 type BookingRoute = CustomerStackScreenProps<'Booking'>['route'];
 type BookingNavigation = CustomerStackScreenProps<'Booking'>['navigation'];
+type DurationMode = BookingDurationHours | 'custom';
 
 export function BookingScreen() {
   const route = useRoute<BookingRoute>();
@@ -45,9 +46,11 @@ export function BookingScreen() {
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   const facilityKey = route.params.facilityKey;
   const [date, setDate] = useState(() => nextBusinessDate(0));
+  const [durationMode, setDurationMode] = useState<DurationMode>(BOOKING_DURATION_PRESET_HOURS[0]);
   const [durationHours, setDurationHours] = useState<BookingDurationHours>(
-    BOOKING_DURATION_HOURS[0],
+    BOOKING_DURATION_PRESET_HOURS[0],
   );
+  const [customEndAt, setCustomEndAt] = useState<string>();
   const [addOnKey, setAddOnKey] = useState<AddOnKey | undefined>();
   const [startTime, setStartTime] = useState<string>();
   const [quote, setQuote] = useState<BookingQuote>();
@@ -84,20 +87,26 @@ export function BookingScreen() {
   );
   const supportedDurations = useMemo(
     () =>
-      BOOKING_DURATION_HOURS.filter((duration) =>
+      BOOKING_DURATION_PRESET_HOURS.filter((duration) =>
         pricingQuery.data?.some((tier) => tier.duration_hours === duration),
       ),
     [pricingQuery.data],
   );
   useEffect(() => {
     const firstSupported = supportedDurations[0];
-    if (firstSupported && !supportedDurations.includes(durationHours)) {
+    if (
+      durationMode !== 'custom' &&
+      firstSupported &&
+      !supportedDurations.some((duration) => duration === durationHours)
+    ) {
       setDurationHours(firstSupported);
+      setDurationMode(firstSupported);
       setStartTime(undefined);
+      setCustomEndAt(undefined);
       setQuote(undefined);
       setNotice(undefined);
     }
-  }, [durationHours, supportedDurations]);
+  }, [durationHours, durationMode, supportedDurations]);
   const availabilityQuery = useQuery(
     queryOptions({
       queryKey: ['availability', facilityKey, date, durationHours, addOnKey ?? null],
@@ -107,7 +116,9 @@ export function BookingScreen() {
             getAvailability(url, token, { facilityKey, date, durationHours, addOnKey }),
           ),
         ),
-      enabled: supportedDurations.includes(durationHours),
+      enabled:
+        durationMode === 'custom' ||
+        supportedDurations.some((duration) => duration === durationHours),
       staleTime: 0,
       // Deterministic client errors (validation, auth, unknown facility) will not
       // change on retry; retry only transport/server failures, at most twice.
@@ -217,6 +228,7 @@ export function BookingScreen() {
                   onPress={() => {
                     setDate(value);
                     setStartTime(undefined);
+                    setCustomEndAt(undefined);
                     invalidateQuote();
                   }}
                 />
@@ -238,18 +250,31 @@ export function BookingScreen() {
             </View>
           ) : (
             <View className="flex-row flex-wrap gap-2">
-              {supportedDurations.map((duration) => (
+              {BOOKING_DURATION_PRESET_HOURS.map((duration) => (
                 <Choice
                   key={duration}
                   label={`${duration} hour${duration > 1 ? 's' : ''}`}
-                  selected={durationHours === duration}
+                  selected={durationMode === duration}
                   onPress={() => {
+                    setDurationMode(duration);
                     setDurationHours(duration);
                     setStartTime(undefined);
+                    setCustomEndAt(undefined);
                     invalidateQuote();
                   }}
                 />
               ))}
+              <Choice
+                label="Custom"
+                selected={durationMode === 'custom'}
+                onPress={() => {
+                  setDurationMode('custom');
+                  setDurationHours(1);
+                  setStartTime(undefined);
+                  setCustomEndAt(undefined);
+                  invalidateQuote();
+                }}
+              />
             </View>
           )}
         </StepCard>
@@ -262,6 +287,7 @@ export function BookingScreen() {
               onPress={() => {
                 setAddOnKey((current) => (current ? undefined : shootingMachine.key));
                 setStartTime(undefined);
+                setCustomEndAt(undefined);
                 invalidateQuote();
               }}
             />
@@ -281,19 +307,73 @@ export function BookingScreen() {
               onRetry={() => void availabilityQuery.refetch()}
             />
           ) : availabilityQuery.data?.slots.length ? (
-            <View className="flex-row flex-wrap gap-2">
-              {availabilityQuery.data.slots.map((slot) => (
-                <Choice
-                  key={slot.startsAt}
-                  label={formatInterval(slot.startsAt, durationHours)}
-                  selected={startTime === slot.startTime}
-                  onPress={() => {
-                    setStartTime(slot.startTime);
-                    invalidateQuote();
-                  }}
-                />
-              ))}
-            </View>
+            durationMode === 'custom' ? (
+              <View className="gap-4">
+                <Text className="text-label font-semibold text-text-primary">Start</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {availabilityQuery.data.slots.map((slot) => (
+                    <Choice
+                      key={slot.startsAt}
+                      label={formatInstantTime(new Date(slot.startsAt))}
+                      selected={startTime === slot.startTime}
+                      onPress={() => {
+                        setStartTime(slot.startTime);
+                        setCustomEndAt(undefined);
+                        setDurationHours(1);
+                        invalidateQuote();
+                      }}
+                    />
+                  ))}
+                </View>
+                <Text className="text-label font-semibold text-text-primary">End</Text>
+                {startTime ? (
+                  <View className="flex-row flex-wrap gap-2">
+                    {availabilityQuery.data.slots
+                      .find((slot) => slot.startTime === startTime)
+                      ?.validEndsAt.map((endAt) => (
+                        <Choice
+                          key={endAt}
+                          label={formatInstantTime(new Date(endAt))}
+                          selected={customEndAt === endAt}
+                          onPress={() => {
+                            const slot = availabilityQuery.data?.slots.find(
+                              (candidate) => candidate.startTime === startTime,
+                            );
+                            if (!slot) return;
+                            setCustomEndAt(endAt);
+                            setDurationHours(
+                              Math.round(
+                                (new Date(endAt).getTime() - new Date(slot.startsAt).getTime()) /
+                                  3_600_000,
+                              ),
+                            );
+                            invalidateQuote();
+                          }}
+                        />
+                      ))}
+                  </View>
+                ) : (
+                  <Text className="text-body-small text-text-secondary">
+                    Select a start time to see server-approved end times.
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <View className="flex-row flex-wrap gap-2">
+                {availabilityQuery.data.slots.map((slot) => (
+                  <Choice
+                    key={slot.startsAt}
+                    label={formatInterval(slot.startsAt, slot.endsAt)}
+                    selected={startTime === slot.startTime}
+                    onPress={() => {
+                      setStartTime(slot.startTime);
+                      setCustomEndAt(slot.endsAt);
+                      invalidateQuote();
+                    }}
+                  />
+                ))}
+              </View>
+            )
           ) : (
             <EmptyState
               title="No available times for this date"
@@ -307,7 +387,11 @@ export function BookingScreen() {
           <Summary label="Date" value={longDate(date)} />
           <Summary
             label="Time"
-            value={startTime ? formatLocalInterval(startTime, durationHours) : 'Select a time'}
+            value={
+              startTime && customEndAt
+                ? formatSelectedInterval(startTime, customEndAt)
+                : 'Select a time'
+            }
           />
           <Summary
             label="Duration"
@@ -332,7 +416,7 @@ export function BookingScreen() {
           {!quote ? (
             <Button
               label={quoteMutation.isPending ? 'Getting quote...' : 'Get server quote'}
-              disabled={!startTime || quoteMutation.isPending}
+              disabled={!startTime || !customEndAt || quoteMutation.isPending}
               onPress={() => quoteMutation.mutate()}
             />
           ) : (
@@ -454,17 +538,13 @@ function formatInstantTime(value: Date) {
     minute: '2-digit',
   });
 }
-function formatInterval(startsAt: string, durationHours: BookingDurationHours) {
-  const start = new Date(startsAt);
-  const end = new Date(start.getTime() + durationHours * 3_600_000);
-  return `${formatInstantTime(start)} – ${formatInstantTime(end)}`;
+function formatInterval(startsAt: string, endsAt: string) {
+  return `${formatInstantTime(new Date(startsAt))} – ${formatInstantTime(new Date(endsAt))}`;
 }
-function formatLocalInterval(value: string, durationHours: BookingDurationHours) {
-  const [hour = '0', minute = '00'] = value.split(':');
+function formatSelectedInterval(startTime: string, endsAt: string) {
+  const [hour = '0', minute = '00'] = startTime.split(':');
   const start = new Date(2000, 0, 1, Number(hour), Number(minute));
-  const end = new Date(start.getTime() + durationHours * 3_600_000);
-  const options = { hour: 'numeric', minute: '2-digit' } as const;
-  return `${start.toLocaleTimeString('en-IN', options)} – ${end.toLocaleTimeString('en-IN', options)}`;
+  return `${start.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} – ${formatInstantTime(new Date(endsAt))}`;
 }
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amount / 100);

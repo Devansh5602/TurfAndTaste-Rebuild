@@ -100,7 +100,8 @@ Rules already encoded for later use:
 
 - Facility keys are the authorized sports only.
 - Shooting machine is allowed only with Cricket Green Net Practice.
-- Durations are 1 or 2 hours.
+- Quick duration presets are 1 hour and 2 hours. Custom duration is a positive whole-hour contiguous interval selected as start plus a server-approved end; no arbitrary maximum is imposed beyond server availability.
+- Every constituent hour must satisfy schedule, closure, override, conflict, future-time, and pricing rules. The server quote sums the configured effective tariff for each hour and persists the immutable interval and total.
 - A slot that starts before the server clock is in the past.
 - Changing facility, date, start, duration, or add-on makes a quote stale.
 - Business calendar dates use `Asia/Kolkata`.
@@ -120,25 +121,25 @@ A client success flag is not confirmation. Razorpay secrets stay in the API envi
 
 ## Data ownership
 
-| Data | Owner |
-| --- | --- |
-| Domain ids, labels, durations | `packages/types` |
-| Validation and booking rules | `packages/schemas` |
-| Visual values | `packages/design-tokens` |
-| HTTP calls | `packages/api-client` |
-| Rows, RLS, files | Supabase, accessed by the API for privileged work |
+| Data                             | Owner                                                              |
+| -------------------------------- | ------------------------------------------------------------------ |
+| Domain ids, labels, durations    | `packages/types`                                                   |
+| Validation and booking rules     | `packages/schemas`                                                 |
+| Visual values                    | `packages/design-tokens`                                           |
+| HTTP calls                       | `packages/api-client`                                              |
+| Rows, RLS, files                 | Supabase, accessed by the API for privileged work                  |
 | Public Supabase URL and anon key | Web and mobile, for Auth flows that Supabase expects on the client |
 
 Service-role keys never enter web or mobile.
 
 ## Deployment topology
 
-| Surface | Target | Phase 0 |
-| --- | --- | --- |
-| Web | Vercel | not deployed |
-| API | hosted Node process or separate Vercel Express project | not deployed |
-| Database | existing Supabase project | not migrated |
-| Mobile | Android APK/AAB via EAS | not built |
+| Surface  | Target                                                 | Phase 0      |
+| -------- | ------------------------------------------------------ | ------------ |
+| Web      | Vercel                                                 | not deployed |
+| API      | hosted Node process or separate Vercel Express project | not deployed |
+| Database | existing Supabase project                              | not migrated |
+| Mobile   | Android APK/AAB via EAS                                | not built    |
 
 ## Environment boundaries
 

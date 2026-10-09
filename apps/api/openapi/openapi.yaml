@@ -59,7 +59,7 @@ paths:
         - name: durationHours
           in: query
           required: true
-          schema: { type: integer, enum: [1, 2] }
+          schema: { type: integer, minimum: 1 }
         - name: addOnKey
           in: query
           schema: { type: string, const: shooting-machine }
@@ -145,7 +145,7 @@ components:
         facilityKey: { $ref: '#/components/schemas/FacilityKey' }
         date: { type: string, format: date }
         startTime: { type: string, pattern: '^(?:[01]\\d|2[0-3]):[0-5]\\d$' }
-        durationHours: { type: integer, enum: [1, 2] }
+        durationHours: { type: integer, minimum: 1 }
         addOnKey: { type: string, const: shooting-machine }
     ErrorResponse:
       type: object

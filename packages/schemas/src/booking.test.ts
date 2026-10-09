@@ -25,7 +25,7 @@ describe('booking input and business time', () => {
     expect(businessWeekday(businessDateTime('2026-10-11', '12:00'))).toBe(0);
   });
 
-  it('accepts only authorized facilities and durations', () => {
+  it('accepts authorized facilities and whole-hour durations', () => {
     expect(
       quoteSelectionSchema.safeParse({
         facilityKey: 'cricket-green-net',
@@ -33,6 +33,14 @@ describe('booking input and business time', () => {
         startTime: '07:00',
         durationHours: 2,
         addOnKey: 'shooting-machine',
+      }).success,
+    ).toBe(true);
+    expect(
+      quoteSelectionSchema.safeParse({
+        facilityKey: 'box-cricket',
+        date: '2026-10-07',
+        startTime: '07:00',
+        durationHours: 4,
       }).success,
     ).toBe(true);
     expect(
@@ -48,7 +56,7 @@ describe('booking input and business time', () => {
         facilityKey: 'box-cricket',
         date: '2026-10-07',
         startTime: '07:00',
-        durationHours: 3,
+        durationHours: 1.5,
       }).success,
     ).toBe(false);
   });

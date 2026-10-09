@@ -1,6 +1,5 @@
 import {
   ADD_ON_KEYS,
-  BOOKING_DURATION_HOURS,
   FACILITY_KEYS,
   type AddOnKey,
   type FacilityKey,
@@ -11,10 +10,7 @@ export const facilityKeySchema = z.enum(FACILITY_KEYS);
 
 export const addOnKeySchema = z.enum(ADD_ON_KEYS);
 
-export const bookingDurationHoursSchema = z.union([
-  z.literal(BOOKING_DURATION_HOURS[0]),
-  z.literal(BOOKING_DURATION_HOURS[1]),
-]);
+export const bookingDurationHoursSchema = z.number().int().min(1);
 
 export const businessDateSchema = z.iso.date();
 export const businessTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);

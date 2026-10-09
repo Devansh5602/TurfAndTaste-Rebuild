@@ -4,6 +4,8 @@ import { authenticatedRequest, ApiClientError } from './client';
 export interface AvailabilitySlot {
   startTime: string;
   startsAt: string;
+  endsAt: string;
+  validEndsAt: string[];
 }
 
 export interface AvailabilityListing {
@@ -28,6 +30,14 @@ export interface BookingQuote extends QuoteSelection {
   addonKey?: AddOnKey;
   addonId?: string;
   startsAt: string;
+  endsAt: string;
+  priceComponents: Array<{
+    startsAt: string;
+    endsAt: string;
+    amountPaise: number;
+    currency: string;
+    pricingTierId: string;
+  }>;
   amountPaise: number;
   currency: string;
   expiresAt: string;
@@ -162,7 +172,11 @@ export async function getPaymentOrder(
   bookingId: string,
 ): Promise<PaymentOrder | null> {
   try {
-    return await authenticatedRequest<PaymentOrder>(baseUrl, `/api/v1/payments/orders/booking/${bookingId}`, accessToken);
+    return await authenticatedRequest<PaymentOrder>(
+      baseUrl,
+      `/api/v1/payments/orders/booking/${bookingId}`,
+      accessToken,
+    );
   } catch (error: unknown) {
     if (error instanceof ApiClientError && error.status === 404) {
       return null;
@@ -183,10 +197,11 @@ export async function verifyPayment(
   });
 }
 
-export async function getRazorpayKeyId(
-  baseUrl: string,
-  accessToken: string,
-): Promise<string> {
-  const response = await authenticatedRequest<RazorpayKeyResponse>(baseUrl, '/api/v1/payments/razorpay/key', accessToken);
+export async function getRazorpayKeyId(baseUrl: string, accessToken: string): Promise<string> {
+  const response = await authenticatedRequest<RazorpayKeyResponse>(
+    baseUrl,
+    '/api/v1/payments/razorpay/key',
+    accessToken,
+  );
   return response.keyId;
 }

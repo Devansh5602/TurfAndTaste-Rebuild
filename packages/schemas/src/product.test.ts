@@ -31,10 +31,12 @@ describe('product rules', () => {
     expect(allowsShootingMachine('pickle-ball')).toBe(false);
   });
 
-  it('allows only 1-hour and 2-hour durations', () => {
+  it('allows positive whole-hour durations', () => {
     expect(bookingDurationHoursSchema.parse(1)).toBe(1);
     expect(bookingDurationHoursSchema.parse(2)).toBe(2);
+    expect(bookingDurationHoursSchema.parse(4)).toBe(4);
     expect(bookingDurationHoursSchema.safeParse(1.5).success).toBe(false);
+    expect(bookingDurationHoursSchema.safeParse(0).success).toBe(false);
   });
 
   it('invalidates a quote when the selection changes', () => {
