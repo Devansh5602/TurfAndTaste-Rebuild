@@ -148,6 +148,17 @@ export class SchedulesService {
     return data as Schedule | null;
   }
 
+  async getOverridesBetween(facilityId: string, from: Date, to: Date): Promise<ScheduleOverride[]> {
+    const { data, error } = await this.supabase
+      .from('schedule_overrides')
+      .select('id, facility_id, starts_at, ends_at, reason, closed')
+      .eq('facility_id', facilityId)
+      .lt('starts_at', to.toISOString())
+      .gt('ends_at', from.toISOString());
+    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check schedule overrides.');
+    return (data ?? []) as ScheduleOverride[];
+  }
+
   async isFacilityOpen(
     facilityId: string,
     date: string,
@@ -292,6 +303,17 @@ export class AvailabilityService {
       };
     const opens = businessDateTime(date, schedule.opens_at.slice(0, 5));
     const closes = businessDateTime(date, schedule.closes_at.slice(0, 5));
+
+    // Fetch everything the whole day needs in one round-trip per table instead of
+    // re-querying per candidate slot (the previous loop made ~4 queries per slot).
+    const overrides = await this.schedulesService.getOverridesBetween(facilityId, opens, closes);
+    const conflicts = await this.getConflictsBetween(
+      facilityId,
+      new Date(opens.getTime() - 2 * 3_600_000),
+      closes,
+    );
+    const pricingTiers = await this.pricingService.getAllPricing(facilityId);
+
     const slots: AvailabilityListing['slots'] = [];
     for (
       let instant = opens;
@@ -299,14 +321,25 @@ export class AvailabilityService {
       instant = new Date(instant.getTime() + 3_600_000)
     ) {
       const startTime = businessTime(instant);
-      const result = await this.checkSlotAvailability(
-        facilityId,
-        date,
-        startTime,
-        durationHours,
-        addonId,
+      if (instant <= serverNow) continue;
+      const slotEnd = new Date(instant.getTime() + durationHours * 3_600_000);
+      const closedToday = overrides.some(
+        (override) =>
+          override.closed &&
+          new Date(override.starts_at) < slotEnd &&
+          new Date(override.ends_at) > instant,
       );
-      if (result.available) slots.push({ startTime, startsAt: instant.toISOString() });
+      if (closedToday) continue;
+      const overlaps = conflicts.some((booking) => {
+        const bookingStart = new Date(booking.starts_at);
+        const bookingEnd = new Date(
+          bookingStart.getTime() + Number(booking.duration_hours) * 3_600_000,
+        );
+        return bookingStart < slotEnd && bookingEnd > instant;
+      });
+      if (overlaps) continue;
+      if (!this.effectivePrice(pricingTiers, addonId, durationHours, instant)) continue;
+      slots.push({ startTime, startsAt: instant.toISOString() });
     }
     return {
       serverNow: serverNow.toISOString(),
@@ -315,6 +348,45 @@ export class AvailabilityService {
       durationHours,
       slots,
     };
+  }
+
+  private async getConflictsBetween(
+    facilityId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ id: string; starts_at: string; duration_hours: number }>> {
+    const { data, error } = await this.supabase
+      .from('bookings')
+      .select('id, starts_at, duration_hours')
+      .eq('facility_id', facilityId)
+      .in('status', ['pending', 'confirmed'])
+      .lt('starts_at', to.toISOString())
+      .gt('starts_at', from.toISOString());
+    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to check availability.');
+    return data ?? [];
+  }
+
+  // In-memory mirror of PricingService.getPrice for a whole day of candidate slots.
+  private effectivePrice(
+    tiers: PricingTier[],
+    addonId: string | null,
+    durationHours: BookingDurationHours,
+    at: Date,
+  ): { amount_paise: number; currency: string } | null {
+    const candidates = tiers
+      .filter(
+        (tier) =>
+          tier.duration_hours === durationHours &&
+          (addonId ? tier.addon_id === addonId : tier.addon_id === null),
+      )
+      .filter((tier) => {
+        const from = new Date(tier.effective_from);
+        const to = tier.effective_to ? new Date(tier.effective_to) : null;
+        return from <= at && (!to || to >= at);
+      })
+      .sort((a, b) => b.effective_from.localeCompare(a.effective_from));
+    const tier = candidates[0];
+    return tier ? { amount_paise: tier.amount_paise, currency: tier.currency } : null;
   }
 
   private unavailable(

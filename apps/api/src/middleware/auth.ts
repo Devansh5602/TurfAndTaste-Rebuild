@@ -37,6 +37,8 @@ export function createAuthMiddleware(env: ApiEnv) {
     } = await supabase.auth.getUser(token);
 
     if (error || !user) {
+      // Safe structured log: verification failure only, never the token itself.
+      req.log?.warn({ code: error?.code ?? 'NO_USER' }, 'access token verification failed');
       next();
       return;
     }
