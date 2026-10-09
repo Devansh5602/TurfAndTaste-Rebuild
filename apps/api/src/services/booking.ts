@@ -159,7 +159,19 @@ export class BookingService {
   ) {}
 
   async createBooking(customerId: string, input: CreateBookingInput): Promise<Booking> {
-    const quote = await this.quoteService.getOwnedQuote(input.quoteId, customerId);
+    let quote: Quote;
+    try {
+      quote = await this.quoteService.getOwnedQuote(input.quoteId, customerId);
+    } catch (error) {
+      // A booking transaction can commit even if its HTTP response is lost. The
+      // unique quote_id is the idempotency boundary: safely return that same
+      // customer-owned booking on replay instead of creating another booking.
+      if (error instanceof HttpError && error.code === 'QUOTE_EXPIRED') {
+        const existing = await this.getBookingByQuote(input.quoteId, customerId);
+        if (existing) return existing;
+      }
+      throw error;
+    }
     const selection = quoteSelectionSchema.parse(input);
     if (
       quote.facilityKey !== selection.facilityKey ||
@@ -194,6 +206,17 @@ export class BookingService {
     return booking;
   }
 
+  private async getBookingByQuote(quoteId: string, customerId: string): Promise<Booking | null> {
+    const { data, error } = await this.supabase
+      .from('bookings')
+      .select('*, booking_items(*, facilities(key, name), facility_addons(key, name))')
+      .eq('quote_id', quoteId)
+      .eq('customer_profile_id', customerId)
+      .maybeSingle();
+    if (error) throw new HttpError(500, 'DATABASE_ERROR', 'Failed to fetch booking.');
+    return data ? this.formatBooking(data, data.booking_items ?? []) : null;
+  }
+
   async getBooking(bookingId: string, customerId: string): Promise<Booking | null> {
     const { data, error } = await this.supabase
       .from('bookings')
@@ -220,8 +243,12 @@ export class BookingService {
 
   private formatBooking(
     booking: Record<string, unknown>,
-    items: Record<string, unknown>[],
+    // The booking_items embed is a one-to-one relationship (booking_items_one_per_booking
+    // unique on booking_id), so PostgREST returns a single object, not an array. Accept
+    // either shape and normalise to an array before mapping.
+    items: Record<string, unknown> | Record<string, unknown>[] | null | undefined,
   ): Booking {
+    const bookingItems = Array.isArray(items) ? items : items ? [items] : [];
     return {
       id: booking.id as string,
       customerProfileId: booking.customer_profile_id as string,
@@ -233,7 +260,7 @@ export class BookingService {
       quoteExpiresAt: booking.quote_expires_at as string,
       createdAt: booking.created_at as string,
       updatedAt: booking.updated_at as string,
-      items: items.map((item) => {
+      items: bookingItems.map((item) => {
         const facility = item.facilities as Record<string, unknown>;
         const addon = item.facility_addons as Record<string, unknown> | null;
         return {

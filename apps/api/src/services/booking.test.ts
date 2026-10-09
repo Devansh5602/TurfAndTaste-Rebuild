@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BookingService, QuoteService } from './booking';
+import { HttpError } from '../errors/http-error';
 
 const selection = {
   facilityKey: 'cricket-green-net' as const,
@@ -163,5 +164,115 @@ describe('BookingService', () => {
       p_customer_profile_id: 'authenticated-customer',
       p_quote_id: '5c4a7b82-a8a0-4ef9-8c98-68eb36f63f66',
     });
+  });
+
+  // booking_items_one_per_booking makes the embed a one-to-one relationship, so
+  // PostgREST returns a single object rather than an array. Regression: mapping
+  // must not throw a raw TypeError that the error handler masks as INTERNAL_ERROR.
+  const singleItemEmbed = {
+    id: 'booking-1',
+    customer_profile_id: 'customer-1',
+    status: 'pending',
+    starts_at: '2026-10-07T01:30:00.000Z',
+    duration_hours: 1,
+    quoted_amount_paise: 80000,
+    currency: 'INR',
+    quote_expires_at: '2026-10-07T01:00:00.000Z',
+    created_at: '2026-10-06T10:00:00.000Z',
+    updated_at: '2026-10-06T10:00:00.000Z',
+    booking_items: {
+      id: 'item-1',
+      booking_id: 'booking-1',
+      facility_id: 'facility-1',
+      addon_id: null,
+      amount_paise: 80000,
+      facilities: { key: 'box-cricket', name: 'Box Cricket' },
+      facility_addons: null,
+    },
+  };
+
+  function chainReturning(row: Record<string, unknown> | null) {
+    return {
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: row, error: null })) })),
+          order: vi.fn(() => ({
+            limit: vi.fn(async () => ({ data: row ? [row] : [], error: null })),
+          })),
+        })),
+      })),
+    };
+  }
+
+  it('formats a booking when the items embed is a single object (one-to-one)', async () => {
+    const service = new BookingService(
+      { from: vi.fn(() => chainReturning(singleItemEmbed)) } as never,
+      {} as never,
+    );
+
+    const booking = await service.getBooking('booking-1', 'customer-1');
+
+    expect(booking?.items).toHaveLength(1);
+    expect(booking?.items[0]).toMatchObject({
+      facilityKey: 'box-cricket',
+      facilityName: 'Box Cricket',
+      addonKey: null,
+      amountPaise: 80000,
+    });
+  });
+
+  it('returns the existing customer booking when a committed quote is replayed', async () => {
+    const expired = new HttpError(409, 'QUOTE_EXPIRED', 'expired');
+    const quoteService = { getOwnedQuote: vi.fn(async () => Promise.reject(expired)) };
+    const supabase = {
+      rpc: vi.fn(),
+      from: vi.fn(() => chainReturning(singleItemEmbed)),
+    };
+    const service = new BookingService(supabase as never, quoteService as never);
+
+    const booking = await service.createBooking('customer-1', {
+      facilityKey: 'box-cricket',
+      date: '2026-10-07',
+      startTime: '07:00',
+      durationHours: 1,
+      quoteId: 'quote-1',
+    });
+
+    expect(booking.id).toBe('booking-1');
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('completes booking creation when the read-back items embed is a single object', async () => {
+    const quoteService = {
+      getOwnedQuote: vi.fn(async () => ({
+        id: 'quote-1',
+        facilityKey: 'box-cricket',
+        facilityId: 'facility-1',
+        date: '2026-10-07',
+        startTime: '07:00',
+        startsAt: '2026-10-07T01:30:00.000Z',
+        durationHours: 1,
+        amountPaise: 80000,
+        currency: 'INR',
+        expiresAt: '2026-10-07T15:00:00.000Z',
+      })),
+    };
+    const supabase = {
+      rpc: vi.fn(async () => ({ data: 'booking-1', error: null })),
+      from: vi.fn(() => chainReturning(singleItemEmbed)),
+    };
+    const service = new BookingService(supabase as never, quoteService as never);
+
+    const booking = await service.createBooking('customer-1', {
+      facilityKey: 'box-cricket',
+      date: '2026-10-07',
+      startTime: '07:00',
+      durationHours: 1,
+      quoteId: 'quote-1',
+    });
+
+    expect(booking.id).toBe('booking-1');
+    expect(booking.items).toHaveLength(1);
+    expect(booking.items[0]?.facilityKey).toBe('box-cricket');
   });
 });
