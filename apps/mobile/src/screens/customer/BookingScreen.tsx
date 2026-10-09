@@ -30,6 +30,8 @@ import {
   availabilityErrorView,
   describeAvailabilityErrorForDevLogs,
 } from '../../booking/availabilityError';
+import { bookingErrorView } from '../../booking/bookingError';
+import { traceMobileRequest, traceNavigation } from '../../network/diagnostics';
 import type { CustomerStackScreenProps } from '../../navigation/types';
 
 type BookingRoute = CustomerStackScreenProps<'Booking'>['route'];
@@ -42,7 +44,7 @@ export function BookingScreen() {
   const { getAccessToken } = useAuth();
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   const facilityKey = route.params.facilityKey;
-  const [date, setDate] = useState(() => nextBusinessDate(1));
+  const [date, setDate] = useState(() => nextBusinessDate(0));
   const [durationHours, setDurationHours] = useState<BookingDurationHours>(
     BOOKING_DURATION_HOURS[0],
   );
@@ -61,14 +63,22 @@ export function BookingScreen() {
   const facilityQuery = useQuery(
     queryOptions({
       queryKey: ['facility', facilityKey],
-      queryFn: () => withAuth((url, token) => getFacility(url, token, facilityKey)),
+      queryFn: () => {
+        if (!apiUrl) throw new Error('The API is not configured.');
+        return traceMobileRequest('facility.detail', () => getFacility(apiUrl, facilityKey));
+      },
       staleTime: 5 * 60_000,
     }),
   );
   const pricingQuery = useQuery(
     queryOptions({
       queryKey: ['facilityPricing', facilityKey],
-      queryFn: () => withAuth((url, token) => getFacilityPricing(url, token, facilityKey)),
+      queryFn: () => {
+        if (!apiUrl) throw new Error('The API is not configured.');
+        return traceMobileRequest('facility.pricing', () =>
+          getFacilityPricing(apiUrl, facilityKey),
+        );
+      },
       staleTime: 5 * 60_000,
     }),
   );
@@ -79,12 +89,23 @@ export function BookingScreen() {
       ),
     [pricingQuery.data],
   );
+  useEffect(() => {
+    const firstSupported = supportedDurations[0];
+    if (firstSupported && !supportedDurations.includes(durationHours)) {
+      setDurationHours(firstSupported);
+      setStartTime(undefined);
+      setQuote(undefined);
+      setNotice(undefined);
+    }
+  }, [durationHours, supportedDurations]);
   const availabilityQuery = useQuery(
     queryOptions({
       queryKey: ['availability', facilityKey, date, durationHours, addOnKey ?? null],
       queryFn: () =>
-        withAuth((url, token) =>
-          getAvailability(url, token, { facilityKey, date, durationHours, addOnKey }),
+        traceMobileRequest('booking.availability', () =>
+          withAuth((url, token) =>
+            getAvailability(url, token, { facilityKey, date, durationHours, addOnKey }),
+          ),
         ),
       enabled: supportedDurations.includes(durationHours),
       staleTime: 0,
@@ -103,8 +124,10 @@ export function BookingScreen() {
   const quoteMutation = useMutation({
     mutationFn: () => {
       if (!startTime) throw new Error('Select an available time.');
-      return withAuth((url, token) =>
-        createQuote(url, token, { facilityKey, date, startTime, durationHours, addOnKey }),
+      return traceMobileRequest('booking.quote', () =>
+        withAuth((url, token) =>
+          createQuote(url, token, { facilityKey, date, startTime, durationHours, addOnKey }),
+        ),
       );
     },
     onSuccess: (nextQuote) => {
@@ -117,19 +140,23 @@ export function BookingScreen() {
       if (!quote || new Date(quote.expiresAt) <= new Date()) {
         throw new Error('The quote has expired. Refresh the price before continuing.');
       }
-      return withAuth((url, token) =>
-        createBooking(url, token, {
-          facilityKey,
-          date,
-          startTime: quote.startTime,
-          durationHours,
-          addOnKey,
-          quoteId: quote.id,
-        }),
+      return traceMobileRequest('booking.create', () =>
+        withAuth((url, token) =>
+          createBooking(url, token, {
+            facilityKey: quote.facilityKey,
+            date: quote.date,
+            startTime: quote.startTime,
+            durationHours: quote.durationHours,
+            addOnKey: quote.addOnKey,
+            quoteId: quote.id,
+          }),
+        ),
       );
     },
-    onSuccess: async (booking) => {
-      await queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    onSuccess: (booking) => {
+      queryClient.setQueryData(['bookings', booking.id], booking);
+      void queryClient.invalidateQueries({ queryKey: ['bookings'], exact: true });
+      traceNavigation(`Booking -> BookingDetail booking=${booking.id}`);
       navigation.replace('BookingDetail', { bookingId: booking.id });
     },
     onError: (error) => {
@@ -141,7 +168,7 @@ export function BookingScreen() {
         setStartTime(undefined);
         void availabilityQuery.refetch();
       }
-      setNotice(error instanceof Error ? error.message : 'Unable to create booking.');
+      setNotice(bookingErrorView(error).description);
     },
   });
 
@@ -173,14 +200,14 @@ export function BookingScreen() {
         }
       >
         <PageHeader title="Book a facility" description={facility.name} />
-        {notice ? <ErrorState title="Booking needs attention" description={notice} /> : null}
+        {notice ? <ErrorState title="Unable to create booking" description={notice} /> : null}
         {mutationError ? (
           <ErrorState title="Quote unavailable" description={mutationError} />
         ) : null}
 
         <StepCard number="1" title="Date">
-          <View className="flex-row gap-2">
-            {[1, 2, 3, 4, 5, 6, 7].map((offset) => {
+          <View className="flex-row flex-wrap gap-2">
+            {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
               const value = nextBusinessDate(offset);
               return (
                 <Choice
@@ -199,20 +226,32 @@ export function BookingScreen() {
         </StepCard>
 
         <StepCard number="2" title="Duration">
-          <View className="flex-row gap-2">
-            {supportedDurations.map((duration) => (
-              <Choice
-                key={duration}
-                label={`${duration} hour${duration > 1 ? 's' : ''}`}
-                selected={durationHours === duration}
-                onPress={() => {
-                  setDurationHours(duration);
-                  setStartTime(undefined);
-                  invalidateQuote();
-                }}
+          {pricingQuery.isLoading ? (
+            <Skeleton />
+          ) : pricingQuery.isError ? (
+            <View className="gap-3">
+              <ErrorState
+                title="Durations unavailable"
+                description="Pricing could not be loaded. Try again."
               />
-            ))}
-          </View>
+              <Button variant="outline" label="Retry" onPress={() => void pricingQuery.refetch()} />
+            </View>
+          ) : (
+            <View className="flex-row flex-wrap gap-2">
+              {supportedDurations.map((duration) => (
+                <Choice
+                  key={duration}
+                  label={`${duration} hour${duration > 1 ? 's' : ''}`}
+                  selected={durationHours === duration}
+                  onPress={() => {
+                    setDurationHours(duration);
+                    setStartTime(undefined);
+                    invalidateQuote();
+                  }}
+                />
+              ))}
+            </View>
+          )}
         </StepCard>
 
         {shootingMachine ? (
@@ -246,7 +285,7 @@ export function BookingScreen() {
               {availabilityQuery.data.slots.map((slot) => (
                 <Choice
                   key={slot.startsAt}
-                  label={formatTime(slot.startsAt)}
+                  label={formatInterval(slot.startsAt, durationHours)}
                   selected={startTime === slot.startTime}
                   onPress={() => {
                     setStartTime(slot.startTime);
@@ -266,7 +305,10 @@ export function BookingScreen() {
         <StepCard number={shootingMachine ? '5' : '4'} title="Review">
           <Summary label="Facility" value={facility.name} />
           <Summary label="Date" value={longDate(date)} />
-          <Summary label="Time" value={startTime ? formatLocalTime(startTime) : 'Select a time'} />
+          <Summary
+            label="Time"
+            value={startTime ? formatLocalInterval(startTime, durationHours) : 'Select a time'}
+          />
           <Summary
             label="Duration"
             value={`${durationHours} hour${durationHours > 1 ? 's' : ''}`}
@@ -405,17 +447,24 @@ function longDate(value: string) {
     month: 'long',
   });
 }
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('en-IN', {
+function formatInstantTime(value: Date) {
+  return value.toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
   });
 }
-function formatLocalTime(value: string) {
+function formatInterval(startsAt: string, durationHours: BookingDurationHours) {
+  const start = new Date(startsAt);
+  const end = new Date(start.getTime() + durationHours * 3_600_000);
+  return `${formatInstantTime(start)} – ${formatInstantTime(end)}`;
+}
+function formatLocalInterval(value: string, durationHours: BookingDurationHours) {
   const [hour = '0', minute = '00'] = value.split(':');
-  const date = new Date(2000, 0, 1, Number(hour), Number(minute));
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const start = new Date(2000, 0, 1, Number(hour), Number(minute));
+  const end = new Date(start.getTime() + durationHours * 3_600_000);
+  const options = { hour: 'numeric', minute: '2-digit' } as const;
+  return `${start.toLocaleTimeString('en-IN', options)} – ${end.toLocaleTimeString('en-IN', options)}`;
 }
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amount / 100);

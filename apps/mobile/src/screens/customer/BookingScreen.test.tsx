@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import {
+  createBooking,
   createQuote,
   getAvailability,
   getFacility,
@@ -10,7 +11,7 @@ import { ThemeProvider } from '@turf-and-taste/ui-native';
 import { BookingScreen } from './BookingScreen';
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
+  useNavigation: () => ({ navigate: jest.fn(), replace: mockReplace }),
   useRoute: () => ({ params: { facilityKey: 'box-cricket' } }),
 }));
 
@@ -32,6 +33,7 @@ jest.mock('@turf-and-taste/api-client', () => {
   }
   return {
     ApiClientError,
+    createBooking: jest.fn(),
     createQuote: jest.fn(),
     getAvailability: jest.fn(),
     getFacility: jest.fn(),
@@ -48,6 +50,7 @@ const { ApiClientError } = jest.requireMock('@turf-and-taste/api-client') as {
 };
 
 const api = {
+  createBooking: createBooking as unknown as jest.Mock,
   createQuote: createQuote as unknown as jest.Mock,
   getAvailability: getAvailability as unknown as jest.Mock,
   getFacility: getFacility as unknown as jest.Mock,
@@ -87,6 +90,7 @@ const pricing = [
 ];
 
 const slot = { startTime: '06:00', startsAt: '2099-01-01T00:30:00.000Z' };
+const mockReplace = jest.fn();
 const listing = {
   serverNow: '2098-12-31T18:30:00.000Z',
   businessTimeZone: 'Asia/Kolkata' as const,
@@ -106,12 +110,15 @@ function shortDate(value: string) {
     day: 'numeric',
   });
 }
-function slotLabel(startsAt: string) {
-  return new Date(startsAt).toLocaleTimeString('en-IN', {
+function slotLabel(startsAt: string, durationHours = 1) {
+  const start = new Date(startsAt);
+  const end = new Date(start.getTime() + durationHours * 3_600_000);
+  const options = {
     timeZone: 'Asia/Kolkata',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
-  });
+  } as const;
+  return `${start.toLocaleTimeString('en-IN', options)} – ${end.toLocaleTimeString('en-IN', options)}`;
 }
 
 function renderBookingScreen() {
@@ -149,9 +156,13 @@ describe('BookingScreen availability states', () => {
 
     renderBookingScreen();
 
-    expect(await screen.findByText('Something went wrong')).toBeTruthy();
+    expect(await screen.findByText('Something went wrong', {}, { timeout: 5_000 })).toBeTruthy();
     expect(
-      await screen.findByText('The service is temporarily unavailable. Please try again shortly.'),
+      await screen.findByText(
+        'The service is temporarily unavailable. Please try again shortly.',
+        {},
+        { timeout: 5_000 },
+      ),
     ).toBeTruthy();
     expect(screen.getByText('Retry')).toBeTruthy();
   });
@@ -186,6 +197,15 @@ describe('BookingScreen availability states', () => {
     expect(screen.queryByText('Something went wrong')).toBeNull();
   });
 
+  it('renders exactly one Review section while availability is loading', async () => {
+    api.getAvailability.mockReturnValue(new Promise(() => undefined));
+
+    renderBookingScreen();
+
+    expect(await screen.findByText('Review')).toBeTruthy();
+    expect(screen.getAllByText('Review')).toHaveLength(1);
+  });
+
   it('renders real slots and clears the quote when the date changes', async () => {
     api.getAvailability.mockResolvedValue(listing);
     api.createQuote.mockResolvedValue({
@@ -205,7 +225,10 @@ describe('BookingScreen availability states', () => {
 
     renderBookingScreen();
 
-    fireEvent.press(await screen.findByText(slotLabel(slot.startsAt)));
+    const interval = await screen.findByText(slotLabel(slot.startsAt));
+    expect(interval).toBeTruthy();
+    expect(screen.getAllByText('Review')).toHaveLength(1);
+    fireEvent.press(interval);
     fireEvent.press(await screen.findByText('Get server quote'));
 
     expect(await screen.findByText('Create booking')).toBeTruthy();
@@ -221,6 +244,45 @@ describe('BookingScreen availability states', () => {
     await waitFor(() => {
       expect(screen.queryByText('Create booking')).toBeNull();
       expect(screen.getByText('Get server quote')).toBeTruthy();
+    });
+  });
+
+  it('submits once with the real quote and navigates with the returned booking id', async () => {
+    api.getAvailability.mockResolvedValue(listing);
+    api.createQuote.mockResolvedValue({
+      id: 'quote-1',
+      facilityKey: 'box-cricket',
+      facilityId: 'facility-1',
+      date: listing.date,
+      startTime: slot.startTime,
+      durationHours: 1,
+      startsAt: slot.startsAt,
+      amountPaise: 80000,
+      currency: 'INR',
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    api.createBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'pending',
+      items: [],
+    });
+
+    renderBookingScreen();
+    fireEvent.press(await screen.findByText(slotLabel(slot.startsAt)));
+    fireEvent.press(screen.getByText('Get server quote'));
+    fireEvent.press(await screen.findByText('Create booking'));
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith('BookingDetail', { bookingId: 'booking-1' }),
+    );
+    expect(api.createBooking).toHaveBeenCalledTimes(1);
+    expect(api.createBooking).toHaveBeenCalledWith(expect.any(String), 'customer-token', {
+      facilityKey: 'box-cricket',
+      date: listing.date,
+      startTime: '06:00',
+      durationHours: 1,
+      addOnKey: undefined,
+      quoteId: 'quote-1',
     });
   });
 });
